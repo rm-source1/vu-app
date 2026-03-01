@@ -11,7 +11,7 @@ KINTONE_SUBDOMAIN = "ga-tech"
 KINTONE_APP_ID = "479"
 KINTONE_API_TOKEN = st.secrets["KINTONE_API_TOKEN"]
 
-# --- 2. ページ基本設定 & デザインCSS（復元版） ---
+# --- 2. ページ基本設定 & デザインCSS ---
 st.set_page_config(page_title="Value up 収支", layout="wide")
 
 st.markdown("""
@@ -19,15 +19,11 @@ st.markdown("""
     .main { background-color: #f8fafc; }
     * { word-break: keep-all !important; font-family: "Helvetica Neue", Arial, sans-serif; }
     
-    /* ヘッダー類 */
     .main-header-title { font-size: 1.8rem; font-weight: 800; color: #0f172a; border-left: 6px solid #3b82f6; padding-left: 15px; margin-bottom: 0.5rem; }
     .property-name-display { font-size: 1.2rem; font-weight: 700; color: #64748b; margin-bottom: 1.5rem; margin-left: 21px; }
     .section-title { font-size: 1.1rem; font-weight: 700; color: #1e293b; border-left: 3px solid #3b82f6; padding-left: 10px; margin-top: 1.2rem; margin-bottom: 0.8rem; }
     
-    /* サイドバーラベル */
-    .sb-label { font-size: 0.75rem; color: #475569; display: flex; align-items: center; height: 31px; }
-
-    /* --- 特定項目の数字を青色に --- */
+    /* --- シミュレーション項目の数字を青色に（太字） --- */
     div[data-testid="stNumberInput"]:has(input[aria-label*="工事費"]) input,
     div[data-testid="stNumberInput"]:has(input[aria-label*="VU評価"]) input,
     div[data-testid="stNumberInput"]:has(input[aria-label*="マイソク"]) input,
@@ -36,22 +32,29 @@ st.markdown("""
         font-weight: 700 !important;
     }
 
-    /* --- +-ボタンのマウスオーバー（ピンク） --- */
-    div[data-testid="stNumberInput"] button:hover {
+    /* --- ボタンの色制御（ピンク #FF00A0 統一） --- */
+    /* ホバー時・アクティブ時・フォーカス時 */
+    div[data-testid="stNumberInput"] button:hover,
+    div[data-testid="stNumberInput"] button:active,
+    div[data-testid="stNumberInput"] button:focus {
         background-color: #FF00A0 !important;
+        border-color: #FF00A0 !important;
         color: #000000 !important;
     }
-    div[data-testid="stNumberInput"] button:hover svg {
+    div[data-testid="stNumberInput"] button:hover svg,
+    div[data-testid="stNumberInput"] button:active svg,
+    div[data-testid="stNumberInput"] button:focus svg {
         fill: #000000 !important;
         stroke: #000000 !important;
     }
 
-    /* カード系 */
+    /* カード系デザイン */
     .metric-card { background-color: #ffffff; border: 1px solid #e2e8f0; padding: 12px; border-radius: 8px; text-align: center; height: 110px; display: flex; flex-direction: column; justify-content: center; }
     .metric-label { font-size: 0.75rem; color: #64748b; margin-bottom: 4px; }
     .metric-value { font-size: 1.2rem; font-weight: 700; color: #0f172a; }
     .unit-small { font-size: 0.75rem; font-weight: normal; margin-left: 2px; }
     .rate-text { font-size: 0.85rem; font-weight: 600; margin-top: 2px; }
+    
     .detail-card { background-color: #ffffff; padding: 12px; border-radius: 8px; border: 1px solid #f1f5f9; margin-top: 10px; }
     .detail-item { font-size: 0.85rem; color: #64748b; line-height: 1.6; }
     .detail-val-text { font-weight: 700; color: #1e293b; }
@@ -101,19 +104,19 @@ with st.sidebar:
     st.divider()
     st.markdown('<div translate="no" style="font-weight:bold;">基本データ</div>', unsafe_allow_html=True)
     
-    # 仕入価格と工事費はそのまま（divide=1）
-    p_price = st.number_input("仕入価格(万)", value=get_val("仕入価格"), step=10.0)
+    # 整数項目（format="%d" で小数点カット）
+    p_price = st.number_input("仕入価格(万)", value=int(get_val("仕入価格")), step=10, format="%d")
     m_fee = st.number_input("管理費(円)", value=int(get_val("管理費")), step=100, format="%d")
     r_fee = st.number_input("修繕積立金(円)", value=int(get_val("修繕積立金")), step=100, format="%d")
-    c_cost = st.number_input("工事費想定(万)", value=get_val("工事費想定"), step=10.0)
+    c_cost = st.number_input("工事費想定(万)", value=int(get_val("工事費想定")), step=10, format="%d")
     
     st.divider()
     y_base = st.number_input("利回り_仕入時(%)", value=get_val("利回り_仕入時"), step=0.1, format="%.2f")
     y_vu = st.number_input("利回り_価格設定(%)", value=get_val("利回り_価格設定"), step=0.1, format="%.2f")
     
     st.divider()
-    l_year = st.number_input("ローン年数(年)", value=int(get_val("ローン年数", default=26)), step=1)
-    l_rate = st.number_input("金利(%)", value=2.0, step=0.1)
+    l_year = st.number_input("ローン年数(年)", value=int(get_val("ローン年数", default=26)), step=1, format="%d")
+    l_rate = st.number_input("金利(%)", value=2.0, step=0.1, format="%.1f")
 
 # --- 5. メイン画面表示 ---
 st.markdown('<div class="main-header-title" translate="no">Value up 収支シミュレーション</div>', unsafe_allow_html=True)
@@ -122,7 +125,7 @@ if not input_id:
     st.info("左側のサイドバーに物件IDを入力してください。")
     st.stop()
 
-# 物件名の表示
+# 物件名表示
 p_name = k_data["物件名"]["value"] if k_data and "物件名" in k_data else "物件名未設定"
 st.markdown(f'<div class="property-name-display" translate="no">物件名：{p_name}</div>', unsafe_allow_html=True)
 
@@ -142,14 +145,32 @@ p_fees = r_base * 3
 prof_a = price_base - p_price - p_fees
 prof_b = price_vu - price_base - c_cost
 total_p = prof_a + prof_b
+
+# 粗利率の計算
+rate_a = (prof_a / price_base * 100) if price_base != 0 else 0
 total_r = (total_p / price_vu * 100) if price_vu != 0 else 0
 
 # --- 7. 粗利分析表示 ---
 st.markdown('<div class="section-title" translate="no">粗利分析</div>', unsafe_allow_html=True)
 s1, s2, s3 = st.columns(3)
-s1.markdown(f'<div class="metric-card" translate="no"><div class="metric-label">仕入粗利</div><div class="metric-value">{prof_a:.1f}<span class="unit-small">万円</span></div></div>', unsafe_allow_html=True)
-s2.markdown(f'<div class="metric-card" translate="no"><div class="metric-label">VU粗利</div><div class="metric-value">{prof_b:.1f}<span class="unit-small">万円</span></div><div class="rate-text" style="color:#64748b; font-size:0.7rem;">工事費 {c_cost:.0f}万 込</div></div>', unsafe_allow_html=True)
-s3.markdown(f'<div class="metric-card" translate="no" style="border:2px solid #3b82f6; background-color:#f0f7ff;"><div class="metric-label" style="color:#3b82f6; font-weight:bold;">会社総粗利</div><div class="metric-value" style="color:#3b82f6;">{total_p:.1f}<span class="unit-small">万円</span></div><div class="rate-text" style="color:#3b82f6;">{total_r:.2f}%</div></div>', unsafe_allow_html=True)
+with s1:
+    st.markdown(f"""<div class="metric-card" translate="no">
+        <div class="metric-label">仕入粗利</div>
+        <div class="metric-value">{prof_a:.1f}<span class="unit-small">万円</span></div>
+        <div class="rate-text" style="color:#64748b;">{rate_a:.2f}<span class="unit-small">%</span></div>
+    </div>""", unsafe_allow_html=True)
+with s2:
+    st.markdown(f"""<div class="metric-card" translate="no">
+        <div class="metric-label">VU粗利</div>
+        <div class="metric-value">{prof_b:.1f}<span class="unit-small">万円</span></div>
+        <div class="rate-text" style="color:#64748b; font-size:0.7rem;">工事費 {int(c_cost)}万 込</div>
+    </div>""", unsafe_allow_html=True)
+with s3:
+    st.markdown(f"""<div class="metric-card" translate="no" style="border:2px solid #3b82f6; background-color:#f0f7ff;">
+        <div class="metric-label" style="color:#3b82f6; font-weight:bold;">会社総粗利</div>
+        <div class="metric-value" style="color:#3b82f6;">{total_p:.1f}<span class="unit-small">万円</span></div>
+        <div class="rate-text" style="color:#3b82f6;">{total_r:.2f}%</div>
+    </div>""", unsafe_allow_html=True)
 
 # --- 8. 販売・CF詳細表示 ---
 st.markdown('<div class="section-title" translate="no">販売・CF詳細</div>', unsafe_allow_html=True)
