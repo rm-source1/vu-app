@@ -2,6 +2,7 @@ import streamlit as st
 import streamlit.components.v1 as components
 import requests
 import math
+import unicodedata
 
 # --- 0. スマホの自動翻訳・文字化け防止スクリプト ---
 components.html('<script>document.documentElement.lang = "ja";</script>', height=0)
@@ -31,7 +32,7 @@ st.markdown("""
         font-weight: 700 !important;
     }
 
-    /* ピンクボタンデザイン */
+    /* ピンクボタンデザイン（Hover/Active/Focus） */
     div[data-testid="stNumberInput"] button:hover,
     div[data-testid="stNumberInput"] button:active,
     div[data-testid="stNumberInput"] button:focus {
@@ -59,17 +60,17 @@ st.markdown("""
 
 # --- 3. 関数定義 ---
 def fetch_kintone_data(ts_id):
+    clean_id = unicodedata.normalize('NFKC', ts_id).strip()
     url = f"https://{KINTONE_SUBDOMAIN}.cybozu.com/k/v1/records.json"
     headers = {"X-Cybozu-API-Token": KINTONE_API_TOKEN}
-    params = {"app": KINTONE_APP_ID, "query": f'TS_ID = "{ts_id}"'}
+    query = f'TS_ID = "{clean_id}"'
+    if clean_id.isdigit(): query += f' or TS_ID = {clean_id}'
+    params = {"app": KINTONE_APP_ID, "query": query}
     try:
         resp = requests.get(url, headers=headers, params=params)
         data = resp.json()
-        if data.get("records"):
-            return data["records"][0]
-        return None
-    except:
-        return None
+        return data["records"][0] if data.get("records") else None
+    except: return None
 
 def get_sales_price(rent_man, mng_rep_total, yield_percent):
     net_rent_monthly = rent_man - (mng_rep_total / 10000)
@@ -90,21 +91,25 @@ with st.sidebar:
     input_id = st.text_input("物件ID (TS_ID)", value=url_ts_id)
     k_data = fetch_kintone_data(input_id) if input_id else None
     
+    missing_fields = []
+    
+    def get_val(field, default=0.0, divide=1):
+        if not k_data: return default
+        if field not in k_data:
+            missing_fields.append(field) # 見つからないフィールドを記録
+            return default
+        val = k_data[field].get("value")
+        if val is None or val == "": return default
+        try:
+            # カンマや単位を除去して強制的に数値化
+            clean_val = str(val).replace(',', '').replace('¥', '').replace('円', '').replace('万', '').strip()
+            return float(clean_val) / divide
+        except: return default
+
     if input_id and not k_data:
         st.error("物件が見つかりません")
-
-    # --- 数値取得ロジックの強化 ---
-    def get_val(field, default=0.0, divide=1):
-        if k_data and field in k_data:
-            val = k_data[field].get("value")
-            if val is None or val == "":
-                return default
-            try:
-                # 文字列で来ても数値に変換、エラーならdefaultを返す
-                return float(val) / divide
-            except (ValueError, TypeError):
-                return default
-        return default
+    elif k_data:
+        st.success("物件データを取得しました")
 
     st.divider()
     st.markdown('<div translate="no" style="font-weight:bold;">基本データ</div>', unsafe_allow_html=True)
@@ -122,6 +127,12 @@ with st.sidebar:
     l_year = st.number_input("ローン年数(年)", value=int(get_val("ローン年数", default=26)), step=1, format="%d")
     l_rate = st.number_input("金利(%)", value=2.0, step=0.1, format="%.1f")
 
+    # --- 診断メッセージ（数値が取れない場合のみ表示） ---
+    if k_data and missing_fields:
+        with st.expander("⚠️ 一部の数値が取得できませんでした"):
+            st.write("以下のフィールドがキントーンから返されていません。フィールドコードの間違いか、APIトークンの閲覧権限（フィールド別制限）を確認してください。")
+            st.json(missing_fields)
+
 # --- 5. メイン画面表示 ---
 st.markdown('<div class="main-header-title" translate="no">Value up 収支シミュレーション</div>', unsafe_allow_html=True)
 
@@ -129,11 +140,11 @@ if not input_id:
     st.info("左側のサイドバーに物件IDを入力してください。")
     st.stop()
 
-# 物件名表示
 p_name = k_data["物件名"]["value"] if k_data and "物件名" in k_data else "物件名未設定"
 st.markdown(f'<div class="property-name-display" translate="no">物件名：{p_name}</div>', unsafe_allow_html=True)
 
-# 賃料入力
+if not k_data: st.stop()
+
 st.markdown('<div class="section-title" translate="no">賃料設定</div>', unsafe_allow_html=True)
 cols = st.columns(4)
 r_base = cols[0].number_input("仕入れ許容(万)", value=get_val("仕入れ許容賃料", divide=10000), step=0.1, format="%.2f")
@@ -149,7 +160,6 @@ p_fees = r_base * 3
 prof_a = price_base - p_price - p_fees
 prof_b = price_vu - price_base - c_cost
 total_p = prof_a + prof_b
-
 rate_a = (prof_a / price_base * 100) if price_base != 0 else 0
 total_r = (total_p / price_vu * 100) if price_vu != 0 else 0
 
@@ -179,15 +189,8 @@ with s3:
 st.markdown('<div class="section-title" translate="no">販売・CF詳細</div>', unsafe_allow_html=True)
 res_cols = st.columns(4)
 patterns = [("仕入れ時", r_base, price_base), ("VU評価時", r_vu, price_vu), ("マイソク", r_mai, price_vu), ("RAM募集", r_ram, price_vu)]
-
 for i, (name, rent, s_price) in enumerate(patterns):
     net_rent = (rent * 10000) - mng_rep_total
     pay = get_monthly_payment(s_price, l_year, l_rate)
     with res_cols[i]:
-        st.markdown(f"""
-        <div class="detail-card" translate="no">
-            <div style="font-size:0.7rem;color:#94a3b8;font-weight:bold;margin-bottom:5px;">{name}</div>
-            <div class="detail-item">販売: <span class="detail-val-text">{int(s_price):,}</span>万円</div>
-            <div class="detail-item">CF: <span class="detail-val-text">{int(net_rent - pay):,}</span>円/月</div>
-        </div>
-        """, unsafe_allow_html=True)
+        st.markdown(f'<div class="detail-card" translate="no"><div style="font-size:0.7rem;color:#94a3b8;font-weight:bold;margin-bottom:5px;">{name}</div><div class="detail-item">販売: <span class="detail-val-text">{int(s_price):,}</span>万円</div><div class="detail-item">CF: <span class="detail-val-text">{int(net_rent - pay):,}</span>円/月</div></div>', unsafe_allow_html=True)
