@@ -14,7 +14,8 @@ st.markdown("""
     <style>
     .main { background-color: #f8fafc; }
     * { word-break: keep-all !important; font-family: "Helvetica Neue", Arial, sans-serif; }
-    .main-header-title { font-size: 1.8rem; font-weight: 800; color: #0f172a; border-left: 6px solid #3b82f6; padding-left: 15px; margin-bottom: 1.5rem; }
+    .main-header-title { font-size: 1.8rem; font-weight: 800; color: #0f172a; border-left: 6px solid #3b82f6; padding-left: 15px; margin-bottom: 0.5rem; }
+    .property-name-display { font-size: 1.2rem; font-weight: 700; color: #64748b; margin-bottom: 1.5rem; margin-left: 21px; }
     .section-title { font-size: 1.1rem; font-weight: 700; color: #1e293b; border-left: 3px solid #3b82f6; padding-left: 10px; margin-top: 1.2rem; margin-bottom: 0.8rem; }
     .metric-card { background-color: #ffffff; border: 1px solid #e2e8f0; padding: 12px; border-radius: 8px; text-align: center; height: 110px; display: flex; flex-direction: column; justify-content: center; }
     .metric-label { font-size: 0.75rem; color: #64748b; margin-bottom: 4px; }
@@ -48,7 +49,7 @@ def get_monthly_payment(principal_man, year, rate):
     if r == 0: return p / n
     return int(p * (r * (1 + r) ** n) / ((1 + r) ** n - 1))
 
-# --- 4. 物件検索 & セッション管理 ---
+# --- 4. 物件検索 & データ取得 ---
 query_params = st.query_params
 url_ts_id = query_params.get("ts_id", "")
 
@@ -56,27 +57,41 @@ with st.sidebar:
     st.markdown('<div style="font-weight:bold; margin-bottom:5px;">物件検索</div>', unsafe_allow_html=True)
     input_id = st.text_input("物件ID (TS_ID)", value=url_ts_id)
     k_data = fetch_kintone_data(input_id) if input_id else None
-    if input_id and not k_data: st.error("物件が見つかりません")
+    
+    if input_id and not k_data:
+        st.error("物件が見つかりません")
 
-    def get_val(field, default=0.0):
+    # データ取得用の便利関数（数値用：円から万への変換対応）
+    def get_val(field, default=0.0, divide=1):
         if k_data and field in k_data:
             val = k_data[field]["value"]
-            return float(val) if val else default
+            try:
+                return float(val) / divide if val else default
+            except:
+                return default
+        return default
+
+    # データ取得用の便利関数（テキスト用）
+    def get_text(field, default=""):
+        if k_data and field in k_data:
+            return k_data[field]["value"] or default
         return default
 
     st.divider()
     st.markdown('<div style="font-weight:bold;">基本データ</div>', unsafe_allow_html=True)
-    p_price = st.number_input("仕入価格(万)", value=get_val("仕入価格"), step=10.0)
+    
+    # 単位（万）の項目は 10000 で割って取得
+    p_price = st.number_input("仕入価格(万)", value=get_val("仕入価格", divide=10000), step=10.0)
     m_fee = st.number_input("管理費(円)", value=get_val("管理費"), step=100.0)
     r_fee = st.number_input("修繕積立金(円)", value=get_val("修繕積立金"), step=100.0)
-    c_cost = st.number_input("工事費想定(万)", value=get_val("工事費想定"), step=10.0)
+    c_cost = st.number_input("工事費想定(万)", value=get_val("工事費想定", divide=10000), step=10.0)
     
     st.divider()
     y_base = st.number_input("利回り_仕入時(%)", value=get_val("利回り_仕入時"), step=0.1, format="%.2f")
     y_vu = st.number_input("利回り_価格設定(%)", value=get_val("利回り_価格設定"), step=0.1, format="%.2f")
     
     st.divider()
-    l_year = st.number_input("ローン年数(年)", value=int(get_val("ローン年数", 26)), step=1)
+    l_year = st.number_input("ローン年数(年)", value=int(get_val("ローン年数", default=26)), step=1)
     l_rate = st.number_input("金利(%)", value=2.0, step=0.1)
 
 # --- 5. メイン画面表示 ---
@@ -86,32 +101,36 @@ if not input_id:
     st.info("左側のサイドバーに物件IDを入力してください。")
     st.stop()
 
-# 賃料入力
+# 物件名の表示
+p_name = get_text("物件名", "物件名未設定")
+st.markdown(f'<div class="property-name-display">物件名：{p_name}</div>', unsafe_allow_html=True)
+
+# 賃料入力（10000 で割って「万」単位で初期表示）
 st.markdown('<div class="section-title">賃料設定</div>', unsafe_allow_html=True)
 cols = st.columns(4)
-r_base = cols[0].number_input("仕入れ許容(万)", value=get_val("仕入れ許容賃料"), step=0.1)
-r_vu = cols[1].number_input("VU評価(万)", value=get_val("VU評価賃料"), step=0.1)
-r_mai = cols[2].number_input("マイソク(万)", value=get_val("マイソク賃料"), step=0.1)
-r_ram = cols[3].number_input("RAM募集(万)", value=get_val("RAM募集賃料"), step=0.1)
+r_base = cols[0].number_input("仕入れ許容(万)", value=get_val("仕入れ許容賃料", divide=10000), step=0.1)
+r_vu = cols[1].number_input("VU評価(万)", value=get_val("VU評価賃料", divide=10000), step=0.1)
+r_mai = cols[2].number_input("マイソク(万)", value=get_val("マイソク賃料", divide=10000), step=0.1)
+r_ram = cols[3].number_input("RAM募集(万)", value=get_val("RAM募集賃料", divide=10000), step=0.1)
 
-# 計算処理
+# --- 6. 計算処理 ---
 mng_rep_total = m_fee + r_fee
 price_base = get_sales_price(r_base, mng_rep_total, y_base)
 price_vu = get_sales_price(r_vu, mng_rep_total, y_vu)
-p_fees = r_base * 3
+p_fees = r_base * 3 # 仕入経費（賃料3ヶ月分と仮定）
 prof_a = price_base - p_price - p_fees
 prof_b = price_vu - price_base - c_cost
 total_p = prof_a + prof_b
 total_r = (total_p / price_vu * 100) if price_vu != 0 else 0
 
-# 粗利分析表示
+# --- 7. 粗利分析表示 ---
 st.markdown('<div class="section-title">粗利分析</div>', unsafe_allow_html=True)
 s1, s2, s3 = st.columns(3)
 s1.markdown(f'<div class="metric-card"><div class="metric-label">仕入粗利</div><div class="metric-value">{prof_a:.1f}<span class="unit-small">万円</span></div></div>', unsafe_allow_html=True)
-s2.markdown(f'<div class="metric-card"><div class="metric-label">VU粗利</div><div class="metric-value">{prof_b:.1f}<span class="unit-small">万円</span></div></div>', unsafe_allow_html=True)
-s3.markdown(f'<div class="metric-card" style="border:2px solid #3b82f6;"><div class="metric-label" style="color:#3b82f6;">会社総粗利</div><div class="metric-value" style="color:#3b82f6;">{total_p:.1f}<span class="unit-small">万円</span></div><div class="rate-text" style="color:#3b82f6;">{total_r:.2f}%</div></div>', unsafe_allow_html=True)
+s2.markdown(f'<div class="metric-card"><div class="metric-label">VU粗利</div><div class="metric-value">{prof_b:.1f}<span class="unit-small">万円</span></div><div class="rate-text" style="color:#64748b; font-size:0.7rem;">工事費 {c_cost:.0f}万 込</div></div>', unsafe_allow_html=True)
+s3.markdown(f'<div class="metric-card" style="border:2px solid #3b82f6; background-color:#f0f7ff;"><div class="metric-label" style="color:#3b82f6; font-weight:bold;">会社総粗利</div><div class="metric-value" style="color:#3b82f6;">{total_p:.1f}<span class="unit-small">万円</span></div><div class="rate-text" style="color:#3b82f6;">{total_r:.2f}%</div></div>', unsafe_allow_html=True)
 
-# 販売詳細表示
+# --- 8. 販売・CF詳細表示 ---
 st.markdown('<div class="section-title">販売・CF詳細</div>', unsafe_allow_html=True)
 res_cols = st.columns(4)
 patterns = [("仕入れ時", r_base, price_base), ("VU評価時", r_vu, price_vu), ("マイソク", r_mai, price_vu), ("RAM募集", r_ram, price_vu)]
@@ -120,4 +139,10 @@ for i, (name, rent, s_price) in enumerate(patterns):
     net_rent = (rent * 10000) - mng_rep_total
     pay = get_monthly_payment(s_price, l_year, l_rate)
     with res_cols[i]:
-        st.markdown(f'<div class="detail-card"><div style="font-size:0.7rem;color:#94a3b8;font-weight:bold;">{name}</div><div class="detail-item">販売: <span class="detail-val-text">{s_price:,}</span>万円</div><div class="detail-item">CF: <span class="detail-val-text">{int(net_rent - pay):,}</span>円/月</div></div>', unsafe_allow_html=True)
+        st.markdown(f"""
+        <div class="detail-card">
+            <div style="font-size:0.7rem;color:#94a3b8;font-weight:bold;margin-bottom:5px;">{name}</div>
+            <div class="detail-item">販売: <span class="detail-val-text">{int(s_price):,}</span>万円</div>
+            <div class="detail-item">CF: <span class="detail-val-text">{int(net_rent - pay):,}</span>円/月</div>
+        </div>
+        """, unsafe_allow_html=True)
