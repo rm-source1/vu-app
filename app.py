@@ -23,9 +23,6 @@ st.markdown("""
     .property-name-display { font-size: 1.2rem; font-weight: 700; color: #64748b; margin-bottom: 1.5rem; margin-left: 21px; }
     .section-title { font-size: 1.1rem; font-weight: 700; color: #1e293b; border-left: 3px solid #3b82f6; padding-left: 10px; margin-top: 1.2rem; margin-bottom: 0.8rem; }
     
-    /* 桁区切り用の補助テキストスタイル */
-    .comma-helper { font-size: 0.75rem; color: #3b82f6; font-weight: 600; margin-top: -15px; margin-bottom: 10px; text-align: right; }
-
     /* --- 特定項目の数字を青色に（太字） --- */
     div[data-testid="stNumberInput"]:has(input[aria-label*="工事費"]) input,
     div[data-testid="stNumberInput"]:has(input[aria-label*="VU評価"]) input,
@@ -50,12 +47,13 @@ st.markdown("""
         stroke: #000000 !important;
     }
 
-    /* カード系 */
+    /* カード系デザイン */
     .metric-card { background-color: #ffffff; border: 1px solid #e2e8f0; padding: 12px; border-radius: 8px; text-align: center; height: 110px; display: flex; flex-direction: column; justify-content: center; }
     .metric-label { font-size: 0.75rem; color: #64748b; margin-bottom: 4px; }
     .metric-value { font-size: 1.2rem; font-weight: 700; color: #0f172a; }
     .unit-small { font-size: 0.75rem; font-weight: normal; margin-left: 2px; }
     .rate-text { font-size: 0.85rem; font-weight: 600; margin-top: 2px; }
+    
     .detail-card { background-color: #ffffff; padding: 12px; border-radius: 8px; border: 1px solid #f1f5f9; margin-top: 10px; }
     .detail-item { font-size: 0.85rem; color: #64748b; line-height: 1.6; }
     .detail-val-text { font-weight: 700; color: #1e293b; }
@@ -105,18 +103,11 @@ with st.sidebar:
     st.divider()
     st.markdown('<div translate="no" style="font-weight:bold;">基本データ</div>', unsafe_allow_html=True)
     
-    # --- 桁区切り補助付き入力欄 ---
+    # 全て整数表示
     p_price = st.number_input("仕入価格(万)", value=int(get_val("仕入価格")), step=10, format="%d")
-    st.markdown(f'<div class="comma-helper">¥ {p_price:,} 万</div>', unsafe_allow_html=True)
-
     m_fee = st.number_input("管理費(円)", value=int(get_val("管理費")), step=100, format="%d")
-    st.markdown(f'<div class="comma-helper">¥ {m_fee:,} 円</div>', unsafe_allow_html=True)
-
     r_fee = st.number_input("修繕積立金(円)", value=int(get_val("修繕積立金")), step=100, format="%d")
-    st.markdown(f'<div class="comma-helper">¥ {r_fee:,} 円</div>', unsafe_allow_html=True)
-
     c_cost = st.number_input("工事費想定(万)", value=int(get_val("工事費想定")), step=10, format="%d")
-    st.markdown(f'<div class="comma-helper">¥ {c_cost:,} 万</div>', unsafe_allow_html=True)
     
     st.divider()
     y_base = st.number_input("利回り_仕入時(%)", value=get_val("利回り_仕入時"), step=0.1, format="%.2f")
@@ -170,7 +161,7 @@ with s2:
     st.markdown(f"""<div class="metric-card" translate="no">
         <div class="metric-label">VU粗利</div>
         <div class="metric-value">{prof_b:.1f}<span class="unit-small">万円</span></div>
-        <div class="rate-text" style="color:#64748b; font-size:0.7rem;">工事費 {int(c_cost):,}万 込</div>
+        <div class="rate-text" style="color:#64748b; font-size:0.7rem;">工事費 {int(c_cost)}万 込</div>
     </div>""", unsafe_allow_html=True)
 with s3:
     st.markdown(f"""<div class="metric-card" translate="no" style="border:2px solid #3b82f6; background-color:#f0f7ff;">
