@@ -23,7 +23,10 @@ st.markdown("""
     .property-name-display { font-size: 1.2rem; font-weight: 700; color: #64748b; margin-bottom: 1.5rem; margin-left: 21px; }
     .section-title { font-size: 1.1rem; font-weight: 700; color: #1e293b; border-left: 3px solid #3b82f6; padding-left: 10px; margin-top: 1.2rem; margin-bottom: 0.8rem; }
     
-    /* --- シミュレーション項目の数字を青色に（太字） --- */
+    /* 桁区切り用の補助テキストスタイル */
+    .comma-helper { font-size: 0.75rem; color: #3b82f6; font-weight: 600; margin-top: -15px; margin-bottom: 10px; text-align: right; }
+
+    /* --- 特定項目の数字を青色に（太字） --- */
     div[data-testid="stNumberInput"]:has(input[aria-label*="工事費"]) input,
     div[data-testid="stNumberInput"]:has(input[aria-label*="VU評価"]) input,
     div[data-testid="stNumberInput"]:has(input[aria-label*="マイソク"]) input,
@@ -33,7 +36,6 @@ st.markdown("""
     }
 
     /* --- ボタンの色制御（ピンク #FF00A0 統一） --- */
-    /* ホバー時・アクティブ時・フォーカス時 */
     div[data-testid="stNumberInput"] button:hover,
     div[data-testid="stNumberInput"] button:active,
     div[data-testid="stNumberInput"] button:focus {
@@ -48,13 +50,12 @@ st.markdown("""
         stroke: #000000 !important;
     }
 
-    /* カード系デザイン */
+    /* カード系 */
     .metric-card { background-color: #ffffff; border: 1px solid #e2e8f0; padding: 12px; border-radius: 8px; text-align: center; height: 110px; display: flex; flex-direction: column; justify-content: center; }
     .metric-label { font-size: 0.75rem; color: #64748b; margin-bottom: 4px; }
     .metric-value { font-size: 1.2rem; font-weight: 700; color: #0f172a; }
     .unit-small { font-size: 0.75rem; font-weight: normal; margin-left: 2px; }
     .rate-text { font-size: 0.85rem; font-weight: 600; margin-top: 2px; }
-    
     .detail-card { background-color: #ffffff; padding: 12px; border-radius: 8px; border: 1px solid #f1f5f9; margin-top: 10px; }
     .detail-item { font-size: 0.85rem; color: #64748b; line-height: 1.6; }
     .detail-val-text { font-weight: 700; color: #1e293b; }
@@ -104,11 +105,18 @@ with st.sidebar:
     st.divider()
     st.markdown('<div translate="no" style="font-weight:bold;">基本データ</div>', unsafe_allow_html=True)
     
-    # 整数項目（format="%d" で小数点カット）
+    # --- 桁区切り補助付き入力欄 ---
     p_price = st.number_input("仕入価格(万)", value=int(get_val("仕入価格")), step=10, format="%d")
+    st.markdown(f'<div class="comma-helper">¥ {p_price:,} 万</div>', unsafe_allow_html=True)
+
     m_fee = st.number_input("管理費(円)", value=int(get_val("管理費")), step=100, format="%d")
+    st.markdown(f'<div class="comma-helper">¥ {m_fee:,} 円</div>', unsafe_allow_html=True)
+
     r_fee = st.number_input("修繕積立金(円)", value=int(get_val("修繕積立金")), step=100, format="%d")
+    st.markdown(f'<div class="comma-helper">¥ {r_fee:,} 円</div>', unsafe_allow_html=True)
+
     c_cost = st.number_input("工事費想定(万)", value=int(get_val("工事費想定")), step=10, format="%d")
+    st.markdown(f'<div class="comma-helper">¥ {c_cost:,} 万</div>', unsafe_allow_html=True)
     
     st.divider()
     y_base = st.number_input("利回り_仕入時(%)", value=get_val("利回り_仕入時"), step=0.1, format="%.2f")
@@ -129,7 +137,7 @@ if not input_id:
 p_name = k_data["物件名"]["value"] if k_data and "物件名" in k_data else "物件名未設定"
 st.markdown(f'<div class="property-name-display" translate="no">物件名：{p_name}</div>', unsafe_allow_html=True)
 
-# 賃料入力（賃料系は /10000 で万単位に変換）
+# 賃料入力
 st.markdown('<div class="section-title" translate="no">賃料設定</div>', unsafe_allow_html=True)
 cols = st.columns(4)
 r_base = cols[0].number_input("仕入れ許容(万)", value=get_val("仕入れ許容賃料", divide=10000), step=0.1, format="%.2f")
@@ -146,7 +154,6 @@ prof_a = price_base - p_price - p_fees
 prof_b = price_vu - price_base - c_cost
 total_p = prof_a + prof_b
 
-# 粗利率の計算
 rate_a = (prof_a / price_base * 100) if price_base != 0 else 0
 total_r = (total_p / price_vu * 100) if price_vu != 0 else 0
 
@@ -163,7 +170,7 @@ with s2:
     st.markdown(f"""<div class="metric-card" translate="no">
         <div class="metric-label">VU粗利</div>
         <div class="metric-value">{prof_b:.1f}<span class="unit-small">万円</span></div>
-        <div class="rate-text" style="color:#64748b; font-size:0.7rem;">工事費 {int(c_cost)}万 込</div>
+        <div class="rate-text" style="color:#64748b; font-size:0.7rem;">工事費 {int(c_cost):,}万 込</div>
     </div>""", unsafe_allow_html=True)
 with s3:
     st.markdown(f"""<div class="metric-card" translate="no" style="border:2px solid #3b82f6; background-color:#f0f7ff;">
