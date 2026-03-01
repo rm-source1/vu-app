@@ -19,11 +19,22 @@ st.markdown("""
     <style>
     .main { background-color: #f8fafc; }
     * { word-break: keep-all !important; font-family: "Helvetica Neue", Arial, sans-serif; }
+    
     .main-header-title { font-size: 1.8rem; font-weight: 800; color: #0f172a; border-left: 6px solid #3b82f6; padding-left: 15px; margin-bottom: 0.5rem; }
     .property-name-display { font-size: 1.2rem; font-weight: 700; color: #64748b; margin-bottom: 1.5rem; margin-left: 21px; }
     .section-title { font-size: 1.1rem; font-weight: 700; color: #1e293b; border-left: 3px solid #3b82f6; padding-left: 10px; margin-top: 1.2rem; margin-bottom: 0.8rem; }
     
-    /* 青色太字デザイン */
+    /* --- ★ボタンのサイズアップ（スマホでの押しやすさ向上） --- */
+    div[data-testid="stNumberInput"] button {
+        width: 50px !important; /* 横幅を32pxから50pxに拡大 */
+        height: 45px !important; /* 高さも少し高くしてタップしやすく */
+    }
+    div[data-testid="stNumberInput"] input {
+        height: 45px !important; /* 入力欄自体の高さも合わせる */
+        font-size: 1.1rem !important;
+    }
+
+    /* --- 特定項目の数字を青色に（太字） --- */
     div[data-testid="stNumberInput"]:has(input[aria-label*="工事費"]) input,
     div[data-testid="stNumberInput"]:has(input[aria-label*="VU評価"]) input,
     div[data-testid="stNumberInput"]:has(input[aria-label*="マイソク"]) input,
@@ -32,7 +43,7 @@ st.markdown("""
         font-weight: 700 !important;
     }
 
-    /* ピンクボタンデザイン（Hover/Active/Focus） */
+    /* --- ボタンの色制御（ピンク #FF00A0 統一） --- */
     div[data-testid="stNumberInput"] button:hover,
     div[data-testid="stNumberInput"] button:active,
     div[data-testid="stNumberInput"] button:focus {
@@ -47,6 +58,7 @@ st.markdown("""
         stroke: #000000 !important;
     }
 
+    /* カード系デザイン */
     .metric-card { background-color: #ffffff; border: 1px solid #e2e8f0; padding: 12px; border-radius: 8px; text-align: center; height: 110px; display: flex; flex-direction: column; justify-content: center; }
     .metric-label { font-size: 0.75rem; color: #64748b; margin-bottom: 4px; }
     .metric-value { font-size: 1.2rem; font-weight: 700; color: #0f172a; }
@@ -91,25 +103,19 @@ with st.sidebar:
     input_id = st.text_input("物件ID (TS_ID)", value=url_ts_id)
     k_data = fetch_kintone_data(input_id) if input_id else None
     
-    missing_fields = []
-    
-    def get_val(field, default=0.0, divide=1):
-        if not k_data: return default
-        if field not in k_data:
-            missing_fields.append(field) # 見つからないフィールドを記録
-            return default
-        val = k_data[field].get("value")
-        if val is None or val == "": return default
-        try:
-            # カンマや単位を除去して強制的に数値化
-            clean_val = str(val).replace(',', '').replace('¥', '').replace('円', '').replace('万', '').strip()
-            return float(clean_val) / divide
-        except: return default
-
     if input_id and not k_data:
         st.error("物件が見つかりません")
-    elif k_data:
-        st.success("物件データを取得しました")
+
+    def get_val(field, default=0.0, divide=1):
+        if k_data and field in k_data:
+            val = k_data[field].get("value")
+            if val is None or val == "": return default
+            try:
+                # カンマや不要な文字を除去して数値化（取得の確実性を向上）
+                clean_val = str(val).replace(',', '').replace('¥', '').replace('円', '').replace('万', '').strip()
+                return float(clean_val) / divide
+            except: return default
+        return default
 
     st.divider()
     st.markdown('<div translate="no" style="font-weight:bold;">基本データ</div>', unsafe_allow_html=True)
@@ -127,12 +133,6 @@ with st.sidebar:
     l_year = st.number_input("ローン年数(年)", value=int(get_val("ローン年数", default=26)), step=1, format="%d")
     l_rate = st.number_input("金利(%)", value=2.0, step=0.1, format="%.1f")
 
-    # --- 診断メッセージ（数値が取れない場合のみ表示） ---
-    if k_data and missing_fields:
-        with st.expander("⚠️ 一部の数値が取得できませんでした"):
-            st.write("以下のフィールドがキントーンから返されていません。フィールドコードの間違いか、APIトークンの閲覧権限（フィールド別制限）を確認してください。")
-            st.json(missing_fields)
-
 # --- 5. メイン画面表示 ---
 st.markdown('<div class="main-header-title" translate="no">Value up 収支シミュレーション</div>', unsafe_allow_html=True)
 
@@ -140,6 +140,7 @@ if not input_id:
     st.info("左側のサイドバーに物件IDを入力してください。")
     st.stop()
 
+# 物件名表示
 p_name = k_data["物件名"]["value"] if k_data and "物件名" in k_data else "物件名未設定"
 st.markdown(f'<div class="property-name-display" translate="no">物件名：{p_name}</div>', unsafe_allow_html=True)
 
@@ -160,6 +161,7 @@ p_fees = r_base * 3
 prof_a = price_base - p_price - p_fees
 prof_b = price_vu - price_base - c_cost
 total_p = prof_a + prof_b
+
 rate_a = (prof_a / price_base * 100) if price_base != 0 else 0
 total_r = (total_p / price_vu * 100) if price_vu != 0 else 0
 
@@ -189,8 +191,15 @@ with s3:
 st.markdown('<div class="section-title" translate="no">販売・CF詳細</div>', unsafe_allow_html=True)
 res_cols = st.columns(4)
 patterns = [("仕入れ時", r_base, price_base), ("VU評価時", r_vu, price_vu), ("マイソク", r_mai, price_vu), ("RAM募集", r_ram, price_vu)]
+
 for i, (name, rent, s_price) in enumerate(patterns):
     net_rent = (rent * 10000) - mng_rep_total
     pay = get_monthly_payment(s_price, l_year, l_rate)
     with res_cols[i]:
-        st.markdown(f'<div class="detail-card" translate="no"><div style="font-size:0.7rem;color:#94a3b8;font-weight:bold;margin-bottom:5px;">{name}</div><div class="detail-item">販売: <span class="detail-val-text">{int(s_price):,}</span>万円</div><div class="detail-item">CF: <span class="detail-val-text">{int(net_rent - pay):,}</span>円/月</div></div>', unsafe_allow_html=True)
+        st.markdown(f"""
+        <div class="detail-card" translate="no">
+            <div style="font-size:0.7rem;color:#94a3b8;font-weight:bold;margin-bottom:5px;">{name}</div>
+            <div class="detail-item">販売: <span class="detail-val-text">{int(s_price):,}</span>万円</div>
+            <div class="detail-item">CF: <span class="detail-val-text">{int(net_rent - pay):,}</span>円/月</div>
+        </div>
+        """, unsafe_allow_html=True)
