@@ -1,41 +1,56 @@
 import streamlit as st
-import streamlit.components.v1 as components
 import requests
 import math
 import unicodedata
+import os
+import re
 
-# --- 1. ページ基本設定（必ず一番上に書く必要があります） ---
-st.set_page_config(page_title="Value up 収支", layout="wide")
+# --- 0. 【究極の根本対策】サーバーのコアファイルを強制的に書き換える ---
+def block_translation_permanently():
+    try:
+        import streamlit
+        # Streamlitの大元ファイル（index.html）の場所を特定
+        index_path = os.path.join(os.path.dirname(streamlit.__file__), "static", "index.html")
+        with open(index_path, "r", encoding="utf-8") as f:
+            html = f.read()
+        
+        modified = False
+        
+        # ① 根本の言語設定を「英語」から「日本語」に強制書き換え
+        if 'lang="en"' in html:
+            html = html.replace('lang="en"', 'lang="ja"')
+            modified = True
+            
+        # ② Google翻訳をシステムレベルで完全拒否するメタタグを埋め込み
+        if '<meta name="google" content="notranslate">' not in html:
+            html = html.replace('<head>', '<head>\n    <meta name="google" content="notranslate">\n')
+            modified = True
+            
+        # 書き換えが発生した場合、大元ファイルを上書き保存する
+        if modified:
+            with open(index_path, "w", encoding="utf-8") as f:
+                f.write(html)
+            return True
+            
+    except Exception:
+        pass
+    return False
 
-# --- 2. 【真・翻訳ポップアップ防止スクリプト】 ---
-# iframeの壁を越えて、親ドキュメント（ページ全体）に直接「翻訳禁止」を命令します。
-components.html("""
-    <script>
-        // 大元のページ（親ドキュメント）を取得
-        const parentDoc = window.parent.document;
-        
-        // ① htmlタグのlang属性を確実に日本語へ
-        parentDoc.documentElement.lang = 'ja';
-        
-        // ② 翻訳エンジンを強制ブロックするメタタグを直接埋め込む
-        if (!parentDoc.querySelector('meta[name="google"]')) {
-            const meta = parentDoc.createElement('meta');
-            meta.name = 'google';
-            meta.content = 'notranslate';
-            parentDoc.head.appendChild(meta);
-        }
-        
-        // ③ 画面全体（body）を翻訳禁止エリアに指定
-        parentDoc.body.classList.add('notranslate');
-    </script>
-""", height=0)
+# 起動時に必ずチェック・書き換えを実行
+if block_translation_permanently():
+    # 書き換え直後は、古いファイルがブラウザに残っているため、強制的にリロードを促す
+    st.warning("⚙️ 【システム更新完了】翻訳ポップアップを根本から防ぐパッチを適用しました。\n\n**ブラウザの「再読み込み（リロード）」ボタンを1回だけ押してください。**（以降、この警告も翻訳ポップアップも二度と出なくなります）")
+    st.stop()
 
-# --- 3. 設定情報 ---
+
+# --- 1. 設定情報 ---
 KINTONE_SUBDOMAIN = "ga-tech"
 KINTONE_APP_ID = "479"
 KINTONE_API_TOKEN = st.secrets["KINTONE_API_TOKEN"]
 
-# --- 4. デザインCSS ---
+# --- 2. ページ基本設定 & デザインCSS ---
+st.set_page_config(page_title="Value up 収支", layout="wide")
+
 st.markdown("""
     <style>
     .main { background-color: #f8fafc; }
@@ -45,7 +60,7 @@ st.markdown("""
     .property-name-display { font-size: 1.2rem; font-weight: 700; color: #64748b; margin-bottom: 1.5rem; margin-left: 21px; }
     .section-title { font-size: 1.1rem; font-weight: 700; color: #1e293b; border-left: 3px solid #3b82f6; padding-left: 10px; margin-top: 1.2rem; margin-bottom: 0.8rem; }
     
-    /* ボタンのサイズアップ（押しやすさ維持） */
+    /* --- スマホで押しやすい大きなボタン --- */
     div[data-testid="stNumberInput"] button {
         width: 50px !important;
         height: 45px !important;
@@ -55,7 +70,7 @@ st.markdown("""
         font-size: 1.1rem !important;
     }
 
-    /* 特定項目の数字を青色に */
+    /* 特定項目の数字を青色に（太字） */
     div[data-testid="stNumberInput"]:has(input[aria-label*="工事費"]) input,
     div[data-testid="stNumberInput"]:has(input[aria-label*="VU評価"]) input,
     div[data-testid="stNumberInput"]:has(input[aria-label*="マイソク"]) input,
@@ -64,7 +79,7 @@ st.markdown("""
         font-weight: 700 !important;
     }
 
-    /* ボタンの色制御（ピンク統一） */
+    /* ボタンの色制御（ピンク #FF00A0 統一） */
     div[data-testid="stNumberInput"] button:hover,
     div[data-testid="stNumberInput"] button:active,
     div[data-testid="stNumberInput"] button:focus {
@@ -79,6 +94,7 @@ st.markdown("""
         stroke: #000000 !important;
     }
 
+    /* カード系デザイン */
     .metric-card { background-color: #ffffff; border: 1px solid #e2e8f0; padding: 12px; border-radius: 8px; text-align: center; height: 110px; display: flex; flex-direction: column; justify-content: center; }
     .metric-label { font-size: 0.75rem; color: #64748b; margin-bottom: 4px; }
     .metric-value { font-size: 1.2rem; font-weight: 700; color: #0f172a; }
@@ -90,7 +106,7 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# --- 5. 関数定義 ---
+# --- 3. 関数定義 ---
 def fetch_kintone_data(ts_id):
     clean_id = unicodedata.normalize('NFKC', ts_id).strip()
     url = f"https://{KINTONE_SUBDOMAIN}.cybozu.com/k/v1/records.json"
@@ -114,7 +130,7 @@ def get_monthly_payment(principal_man, year, rate):
     if r == 0: return p / n
     return int(p * (r * (1 + r) ** n) / ((1 + r) ** n - 1))
 
-# --- 6. 物件検索 & データ取得 ---
+# --- 4. 物件検索 & データ取得 ---
 query_params = st.query_params
 url_ts_id = query_params.get("ts_id", "")
 
@@ -152,7 +168,7 @@ with st.sidebar:
     l_year = st.number_input("ローン年数(年)", value=int(get_val("ローン年数", default=26)), step=1, format="%d")
     l_rate = st.number_input("金利(%)", value=2.0, step=0.1, format="%.1f")
 
-# --- 7. メイン画面表示 ---
+# --- 5. メイン画面表示 ---
 st.markdown('<div class="main-header-title">Value up 収支シミュレーション</div>', unsafe_allow_html=True)
 
 if not input_id:
@@ -171,7 +187,7 @@ r_vu = cols[1].number_input("VU評価(万)", value=get_val("VU評価賃料", div
 r_mai = cols[2].number_input("マイソク(万)", value=get_val("マイソク賃料", divide=10000), step=0.1, format="%.2f")
 r_ram = cols[3].number_input("RAM募集(万)", value=get_val("RAM募集賃料", divide=10000), step=0.1, format="%.2f")
 
-# --- 8. 計算処理 ---
+# --- 6. 計算処理 ---
 mng_rep_total = m_fee + r_fee
 price_base = get_sales_price(r_base, mng_rep_total, y_base)
 price_vu = get_sales_price(r_vu, mng_rep_total, y_vu)
@@ -183,7 +199,7 @@ total_p = prof_a + prof_b
 rate_a = (prof_a / price_base * 100) if price_base != 0 else 0
 total_r = (total_p / price_vu * 100) if price_vu != 0 else 0
 
-# --- 9. 粗利分析表示 ---
+# --- 7. 粗利分析表示 ---
 st.markdown('<div class="section-title">粗利分析</div>', unsafe_allow_html=True)
 s1, s2, s3 = st.columns(3)
 with s1:
@@ -205,7 +221,7 @@ with s3:
         <div class="rate-text" style="color:#3b82f6;">{total_r:.2f}%</div>
     </div>""", unsafe_allow_html=True)
 
-# --- 10. 販売・CF詳細表示 ---
+# --- 8. 販売・CF詳細表示 ---
 st.markdown('<div class="section-title">販売・CF詳細</div>', unsafe_allow_html=True)
 res_cols = st.columns(4)
 patterns = [("仕入れ時", r_base, price_base), ("VU評価時", r_vu, price_vu), ("マイソク", r_mai, price_vu), ("RAM募集", r_ram, price_vu)]
