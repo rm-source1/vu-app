@@ -18,12 +18,11 @@ st.markdown("""
     <style>
     .main { background-color: #f8fafc; }
     * { word-break: keep-all !important; font-family: "Helvetica Neue", Arial, sans-serif; }
-    
     .main-header-title { font-size: 1.8rem; font-weight: 800; color: #0f172a; border-left: 6px solid #3b82f6; padding-left: 15px; margin-bottom: 0.5rem; }
     .property-name-display { font-size: 1.2rem; font-weight: 700; color: #64748b; margin-bottom: 1.5rem; margin-left: 21px; }
     .section-title { font-size: 1.1rem; font-weight: 700; color: #1e293b; border-left: 3px solid #3b82f6; padding-left: 10px; margin-top: 1.2rem; margin-bottom: 0.8rem; }
     
-    /* --- 特定項目の数字を青色に（太字） --- */
+    /* 青色太字デザイン */
     div[data-testid="stNumberInput"]:has(input[aria-label*="工事費"]) input,
     div[data-testid="stNumberInput"]:has(input[aria-label*="VU評価"]) input,
     div[data-testid="stNumberInput"]:has(input[aria-label*="マイソク"]) input,
@@ -32,7 +31,7 @@ st.markdown("""
         font-weight: 700 !important;
     }
 
-    /* --- ボタンの色制御（ピンク #FF00A0 統一） --- */
+    /* ピンクボタンデザイン */
     div[data-testid="stNumberInput"] button:hover,
     div[data-testid="stNumberInput"] button:active,
     div[data-testid="stNumberInput"] button:focus {
@@ -47,13 +46,11 @@ st.markdown("""
         stroke: #000000 !important;
     }
 
-    /* カード系デザイン */
     .metric-card { background-color: #ffffff; border: 1px solid #e2e8f0; padding: 12px; border-radius: 8px; text-align: center; height: 110px; display: flex; flex-direction: column; justify-content: center; }
     .metric-label { font-size: 0.75rem; color: #64748b; margin-bottom: 4px; }
     .metric-value { font-size: 1.2rem; font-weight: 700; color: #0f172a; }
     .unit-small { font-size: 0.75rem; font-weight: normal; margin-left: 2px; }
     .rate-text { font-size: 0.85rem; font-weight: 600; margin-top: 2px; }
-    
     .detail-card { background-color: #ffffff; padding: 12px; border-radius: 8px; border: 1px solid #f1f5f9; margin-top: 10px; }
     .detail-item { font-size: 0.85rem; color: #64748b; line-height: 1.6; }
     .detail-val-text { font-weight: 700; color: #1e293b; }
@@ -68,8 +65,11 @@ def fetch_kintone_data(ts_id):
     try:
         resp = requests.get(url, headers=headers, params=params)
         data = resp.json()
-        return data["records"][0] if data.get("records") else None
-    except: return None
+        if data.get("records"):
+            return data["records"][0]
+        return None
+    except:
+        return None
 
 def get_sales_price(rent_man, mng_rep_total, yield_percent):
     net_rent_monthly = rent_man - (mng_rep_total / 10000)
@@ -93,17 +93,22 @@ with st.sidebar:
     if input_id and not k_data:
         st.error("物件が見つかりません")
 
+    # --- 数値取得ロジックの強化 ---
     def get_val(field, default=0.0, divide=1):
         if k_data and field in k_data:
             val = k_data[field].get("value")
-            try: return float(val) / divide if val else default
-            except: return default
+            if val is None or val == "":
+                return default
+            try:
+                # 文字列で来ても数値に変換、エラーならdefaultを返す
+                return float(val) / divide
+            except (ValueError, TypeError):
+                return default
         return default
 
     st.divider()
     st.markdown('<div translate="no" style="font-weight:bold;">基本データ</div>', unsafe_allow_html=True)
     
-    # 全て整数表示
     p_price = st.number_input("仕入価格(万)", value=int(get_val("仕入価格")), step=10, format="%d")
     m_fee = st.number_input("管理費(円)", value=int(get_val("管理費")), step=100, format="%d")
     r_fee = st.number_input("修繕積立金(円)", value=int(get_val("修繕積立金")), step=100, format="%d")
