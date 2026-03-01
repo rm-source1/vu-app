@@ -1,11 +1,39 @@
 import streamlit as st
-import streamlit.components.v1 as components
+import os
 import requests
 import math
 import unicodedata
 
-# --- 0. スマホの自動翻訳・文字化け防止スクリプト ---
-components.html('<script>document.documentElement.lang = "ja";</script>', height=0)
+# --- 0. 【究極のプロ仕様】サーバーのコアファイルを強制書き換え ---
+# Streamlit初期設定の「英語」を、システムレベルで「日本語」に上書きし、翻訳ポップアップを根絶します。
+def block_translation():
+    st_dir = os.path.dirname(st.__file__)
+    index_path = os.path.join(st_dir, "static", "index.html")
+    
+    try:
+        with open(index_path, "r", encoding="utf-8") as f:
+            html = f.read()
+            
+        modified = False
+        # ① 根本の言語設定を「ja」へ書き換え
+        if '<html lang="en">' in html:
+            html = html.replace('<html lang="en">', '<html lang="ja">')
+            modified = True
+            
+        # ② 翻訳エンジンを強制ブロックするメタタグを大元に埋め込み
+        if '<meta name="google" content="notranslate">' not in html:
+            html = html.replace('<head>', '<head>\n    <meta name="google" content="notranslate">\n')
+            modified = True
+            
+        # 変更があればファイルを上書き保存
+        if modified:
+            with open(index_path, "w", encoding="utf-8") as f:
+                f.write(html)
+    except Exception:
+        pass
+
+# 起動時に実行
+block_translation()
 
 # --- 1. 設定情報 ---
 KINTONE_SUBDOMAIN = "ga-tech"
@@ -24,13 +52,13 @@ st.markdown("""
     .property-name-display { font-size: 1.2rem; font-weight: 700; color: #64748b; margin-bottom: 1.5rem; margin-left: 21px; }
     .section-title { font-size: 1.1rem; font-weight: 700; color: #1e293b; border-left: 3px solid #3b82f6; padding-left: 10px; margin-top: 1.2rem; margin-bottom: 0.8rem; }
     
-    /* --- ★ボタンのサイズアップ（スマホでの押しやすさ向上） --- */
+    /* --- ボタンのサイズアップ（スマホでの押しやすさ維持） --- */
     div[data-testid="stNumberInput"] button {
-        width: 50px !important; /* 横幅を32pxから50pxに拡大 */
-        height: 45px !important; /* 高さも少し高くしてタップしやすく */
+        width: 50px !important;
+        height: 45px !important;
     }
     div[data-testid="stNumberInput"] input {
-        height: 45px !important; /* 入力欄自体の高さも合わせる */
+        height: 45px !important;
         font-size: 1.1rem !important;
     }
 
@@ -99,7 +127,7 @@ query_params = st.query_params
 url_ts_id = query_params.get("ts_id", "")
 
 with st.sidebar:
-    st.markdown('<div translate="no" style="font-weight:bold; margin-bottom:5px;">物件検索</div>', unsafe_allow_html=True)
+    st.markdown('<div style="font-weight:bold; margin-bottom:5px;">物件検索</div>', unsafe_allow_html=True)
     input_id = st.text_input("物件ID (TS_ID)", value=url_ts_id)
     k_data = fetch_kintone_data(input_id) if input_id else None
     
@@ -111,14 +139,13 @@ with st.sidebar:
             val = k_data[field].get("value")
             if val is None or val == "": return default
             try:
-                # カンマや不要な文字を除去して数値化（取得の確実性を向上）
                 clean_val = str(val).replace(',', '').replace('¥', '').replace('円', '').replace('万', '').strip()
                 return float(clean_val) / divide
             except: return default
         return default
 
     st.divider()
-    st.markdown('<div translate="no" style="font-weight:bold;">基本データ</div>', unsafe_allow_html=True)
+    st.markdown('<div style="font-weight:bold;">基本データ</div>', unsafe_allow_html=True)
     
     p_price = st.number_input("仕入価格(万)", value=int(get_val("仕入価格")), step=10, format="%d")
     m_fee = st.number_input("管理費(円)", value=int(get_val("管理費")), step=100, format="%d")
@@ -134,19 +161,18 @@ with st.sidebar:
     l_rate = st.number_input("金利(%)", value=2.0, step=0.1, format="%.1f")
 
 # --- 5. メイン画面表示 ---
-st.markdown('<div class="main-header-title" translate="no">Value up 収支シミュレーション</div>', unsafe_allow_html=True)
+st.markdown('<div class="main-header-title">Value up 収支シミュレーション</div>', unsafe_allow_html=True)
 
 if not input_id:
     st.info("左側のサイドバーに物件IDを入力してください。")
     st.stop()
 
-# 物件名表示
 p_name = k_data["物件名"]["value"] if k_data and "物件名" in k_data else "物件名未設定"
-st.markdown(f'<div class="property-name-display" translate="no">物件名：{p_name}</div>', unsafe_allow_html=True)
+st.markdown(f'<div class="property-name-display">物件名：{p_name}</div>', unsafe_allow_html=True)
 
 if not k_data: st.stop()
 
-st.markdown('<div class="section-title" translate="no">賃料設定</div>', unsafe_allow_html=True)
+st.markdown('<div class="section-title">賃料設定</div>', unsafe_allow_html=True)
 cols = st.columns(4)
 r_base = cols[0].number_input("仕入れ許容(万)", value=get_val("仕入れ許容賃料", divide=10000), step=0.1, format="%.2f")
 r_vu = cols[1].number_input("VU評価(万)", value=get_val("VU評価賃料", divide=10000), step=0.1, format="%.2f")
@@ -166,29 +192,29 @@ rate_a = (prof_a / price_base * 100) if price_base != 0 else 0
 total_r = (total_p / price_vu * 100) if price_vu != 0 else 0
 
 # --- 7. 粗利分析表示 ---
-st.markdown('<div class="section-title" translate="no">粗利分析</div>', unsafe_allow_html=True)
+st.markdown('<div class="section-title">粗利分析</div>', unsafe_allow_html=True)
 s1, s2, s3 = st.columns(3)
 with s1:
-    st.markdown(f"""<div class="metric-card" translate="no">
+    st.markdown(f"""<div class="metric-card">
         <div class="metric-label">仕入粗利</div>
         <div class="metric-value">{prof_a:.1f}<span class="unit-small">万円</span></div>
         <div class="rate-text" style="color:#64748b;">{rate_a:.2f}<span class="unit-small">%</span></div>
     </div>""", unsafe_allow_html=True)
 with s2:
-    st.markdown(f"""<div class="metric-card" translate="no">
+    st.markdown(f"""<div class="metric-card">
         <div class="metric-label">VU粗利</div>
         <div class="metric-value">{prof_b:.1f}<span class="unit-small">万円</span></div>
         <div class="rate-text" style="color:#64748b; font-size:0.7rem;">工事費 {int(c_cost)}万 込</div>
     </div>""", unsafe_allow_html=True)
 with s3:
-    st.markdown(f"""<div class="metric-card" translate="no" style="border:2px solid #3b82f6; background-color:#f0f7ff;">
+    st.markdown(f"""<div class="metric-card" style="border:2px solid #3b82f6; background-color:#f0f7ff;">
         <div class="metric-label" style="color:#3b82f6; font-weight:bold;">会社総粗利</div>
         <div class="metric-value" style="color:#3b82f6;">{total_p:.1f}<span class="unit-small">万円</span></div>
         <div class="rate-text" style="color:#3b82f6;">{total_r:.2f}%</div>
     </div>""", unsafe_allow_html=True)
 
 # --- 8. 販売・CF詳細表示 ---
-st.markdown('<div class="section-title" translate="no">販売・CF詳細</div>', unsafe_allow_html=True)
+st.markdown('<div class="section-title">販売・CF詳細</div>', unsafe_allow_html=True)
 res_cols = st.columns(4)
 patterns = [("仕入れ時", r_base, price_base), ("VU評価時", r_vu, price_vu), ("マイソク", r_mai, price_vu), ("RAM募集", r_ram, price_vu)]
 
@@ -197,7 +223,7 @@ for i, (name, rent, s_price) in enumerate(patterns):
     pay = get_monthly_payment(s_price, l_year, l_rate)
     with res_cols[i]:
         st.markdown(f"""
-        <div class="detail-card" translate="no">
+        <div class="detail-card">
             <div style="font-size:0.7rem;color:#94a3b8;font-weight:bold;margin-bottom:5px;">{name}</div>
             <div class="detail-item">販売: <span class="detail-val-text">{int(s_price):,}</span>万円</div>
             <div class="detail-item">CF: <span class="detail-val-text">{int(net_rent - pay):,}</span>円/月</div>
