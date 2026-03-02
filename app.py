@@ -7,45 +7,44 @@ import unicodedata
 # --- 1. ページ基本設定 ---
 st.set_page_config(page_title="Value up 収支", layout="wide", initial_sidebar_state="expanded")
 
-# --- 2. 認証ロジック（デバッグ機能付き） ---
+# --- 2. 認証ロジック（サイドバー内デバッグ表示版） ---
 if "authenticated" not in st.session_state:
     st.session_state.authenticated = False
 
-# Secretsから取得（ここが最優先）
+# Secretsから取得
 target_password = str(st.secrets.get("APP_PASSWORD", "admin123")).strip()
 
-# URLパラメータ取得の徹底（新しい方式と古い方式の両方を試す）
-q_params = st.query_params
-url_code = q_params.get("code", "")
+# URLパラメータ取得（新しい辞書形式で確実に取得）
+url_params = st.query_params.to_dict()
+url_code = url_params.get("code", "").strip()
 
-# リストで取得された場合の処理
-if isinstance(url_code, list):
-    url_code = url_code[0] if url_code else ""
-
-url_code = str(url_code).strip()
-
-# 【デバッグ用表示】※自動ログインが成功したら、この3行を消してもOKです
-# st.write(f"DEBUG: URLから届いたコード = '{url_code}'")
-# st.write(f"DEBUG: 設定されている正解 = '{target_password}'")
-
-# 比較と認証
+# 自動ログイン判定
 if url_code == target_password and url_code != "":
     st.session_state.authenticated = True
 
-# 未認証時のUI
+# 未認証時の処理
 if not st.session_state.authenticated:
     with st.sidebar:
         st.markdown('<div class="notranslate" style="font-weight:bold; font-size:1.1rem;">アクセス認証</div>', unsafe_allow_html=True)
+        
+        # --- ここからデバッグ情報（認証失敗時のみサイドバーに表示） ---
+        st.write("---")
+        st.write("🔍 **診断情報**")
+        st.write(f"・URLのcode: `{url_code}`")
+        # セキュリティのためSecretsの正解は伏せ字で表示（文字数確認用）
+        st.write(f"・設定済みの正解（文字数）: {len(target_password)}文字")
+        st.write("---")
+        
         input_password = st.text_input("アクセスコードを入力", type="password")
         if input_password.strip() == target_password:
             st.session_state.authenticated = True
             st.rerun()
         elif input_password:
             st.error("コードが正しくありません")
-        st.info("このアプリの閲覧にはアクセスコードが必要です。")
-    st.stop()
+        st.info("閲覧にはパスワードまたは正しいURLが必要です。")
+    st.stop() # 認証されるまで以下を表示しない
 
-# --- 3. 【核】翻訳バグ・アイコン文字化け対策 ---
+# --- 3. 【核：MutationObserver】翻訳バグ・アイコン文字化け対策 ---
 components.html("""
     <script>
         const nukeTranslation = () => {
@@ -71,7 +70,7 @@ components.html("""
     </script>
 """, height=0)
 
-# --- 4. デザインCSS（青色強調・アイコン保護・VU工事費修正反映） ---
+# --- 4. デザインCSS（青色強調・アイコン保護） ---
 st.markdown("""
     <style>
     .stApp { background-color: #f8fafc; }
@@ -111,7 +110,7 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# --- 5. データ取得関数 ---
+# --- 5. ロジック関数 ---
 def fetch_kintone_data(ts_id):
     clean_id = unicodedata.normalize('NFKC', str(ts_id)).strip()
     url = f"https://ga-tech.cybozu.com/k/v1/records.json"
@@ -135,7 +134,7 @@ def get_monthly_payment(principal_man, year, rate):
     if r == 0: return p / (n if n != 0 else 1)
     return int(p * (r * (1 + r) ** n) / ((1 + r) ** n - 1))
 
-# --- 6. メイン表示 ---
+# --- 6. メイン画面表示 ---
 with st.sidebar:
     st.markdown('<div class="notranslate" style="font-weight:bold; font-size:1.1rem;">物件検索</div>', unsafe_allow_html=True)
     input_id = st.text_input("物件ID (TS_ID)", value=st.query_params.get("ts_id", ""))
