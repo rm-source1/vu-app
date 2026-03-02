@@ -4,15 +4,14 @@ import requests
 import math
 import unicodedata
 
-# --- 1. ページ基本設定（サイドバーを開いた状態で固定） ---
+# --- 1. ページ基本設定 ---
 st.set_page_config(
     page_title="Value up 収支", 
     layout="wide", 
     initial_sidebar_state="expanded"
 )
 
-# --- 2. 【翻訳バグ・アイコン文字化け対策】最上層(window.top)パッチ ---
-# これにより、翻訳ポップアップを抑制し、サイドバーの矢印アイコンを正常に表示させます
+# --- 2. 【翻訳バグ・矢印復活パッチ】最上層(window.top)への命令 ---
 components.html("""
     <script>
         const topDoc = window.top.document;
@@ -48,7 +47,7 @@ components.html("""
     </script>
 """, height=0)
 
-# --- 3. デザインCSS（青色強調・カードデザインの復元） ---
+# --- 3. デザインCSS（青色強調・カードデザインの完全復元） ---
 st.markdown("""
     <style>
     .stApp { background-color: #f8fafc; }
@@ -59,12 +58,11 @@ st.markdown("""
         font-family: "Helvetica Neue", Arial, "Hiragino Kaku Gothic ProN", "Hiragino Sans", Meiryo, sans-serif !important; 
     }
 
-    /* タイトルと物件名 */
     .main-header-title { font-size: 2rem; font-weight: 800; color: #0f172a; margin-bottom: 0.2rem; }
     .property-name-display { font-size: 1.2rem; font-weight: 700; color: #64748b; margin-bottom: 2rem; }
     .section-title { font-size: 1.2rem; font-weight: 800; color: #1e293b; border-left: 5px solid #3b82f6; padding-left: 12px; margin-top: 2rem; margin-bottom: 1rem; }
 
-    /* ★ 工事費・評価賃料・マイソク・RAM募集の数字を「青色」に */
+    /* 工事費・評価賃料・マイソク・RAM募集の数字を「青色」に */
     div[data-testid="stNumberInput"]:has(input[aria-label*="工事費"]) input,
     div[data-testid="stNumberInput"]:has(input[aria-label*="VU評価"]) input,
     div[data-testid="stNumberInput"]:has(input[aria-label*="マイソク"]) input,
@@ -73,7 +71,7 @@ st.markdown("""
         font-weight: 800 !important;
     }
 
-    /* ボタンサイズアップ（スマホ対応） */
+    /* ボタンサイズ（スマホ対応） */
     div[data-testid="stNumberInput"] button { width: 50px !important; height: 45px !important; }
     div[data-testid="stNumberInput"] button:hover { background-color: #FF00A0 !important; color: white !important; }
 
@@ -84,35 +82,32 @@ st.markdown("""
         height: 140px; display: flex; flex-direction: column; justify-content: center;
         box-shadow: 0 1px 3px rgba(0,0,0,0.05);
     }
-    .metric-label { font-size: 0.9rem; color: #64748b; margin-bottom: 8px; font-weight: 600; }
     .metric-value { font-size: 1.6rem; font-weight: 800; color: #0f172a; }
     
-    /* ★ 会社総粗利（青枠ハイライト） */
+    /* 会社総粗利（青枠ハイライト） */
     .total-profit-card { border: 2.5px solid #3b82f6 !important; background-color: #f0f7ff !important; }
     .total-profit-card .metric-label, .total-profit-card .metric-value { color: #3b82f6 !important; }
 
-    /* 販売・CF詳細カード */
     .detail-card { background-color: #ffffff; padding: 15px; border-radius: 8px; border: 1px solid #f1f5f9; margin-top: 10px; }
     .detail-val-text { font-weight: 800; color: #1e293b; font-size: 1.1rem; }
     </style>
 """, unsafe_allow_html=True)
 
-# --- 4. kintoneデータ取得ロジック（重複除外仕様） ---
+# --- 4. kintoneデータ取得（シンプル版：最新を1件取得） ---
 def fetch_kintone_data(ts_id):
     clean_id = unicodedata.normalize('NFKC', str(ts_id)).strip()
-    subdomain = "ga-tech"
-    url = f"https://{subdomain}.cybozu.com/k/v1/records.json"
+    url = f"https://ga-tech.cybozu.com/k/v1/records.json"
     headers = {"X-Cybozu-API-Token": st.secrets["KINTONE_API_TOKEN"]}
     
-    # 【仕様変更】IDが一致し、かつ「VU可否」が「重複」でないものを最新順に1件取得
-    query_base = f'(TS_ID = "{clean_id}"'
+    query = f'(TS_ID = "{clean_id}"'
     if clean_id.isdigit():
-        query_base += f' or TS_ID = {clean_id}'
-    query_base += ') and VU可否 != "重複"'
+        query += f' or TS_ID = {clean_id}'
+    query += ')'
     
+    # 重複があっても一番新しい（IDが大きい）レコードを優先します
     params = {
         "app": "479",
-        "query": f'{query_base} order by $id desc limit 1'
+        "query": f'{query} order by $id desc limit 1'
     }
     
     try:
@@ -132,7 +127,7 @@ def get_monthly_payment(principal_man, year, rate):
     if r == 0: return p / (n if n != 0 else 1)
     return int(p * (r * (1 + r) ** n) / ((1 + r) ** n - 1))
 
-# --- 5. サイドバー配置 ---
+# --- 5. サイドバー ---
 with st.sidebar:
     st.markdown('<div class="notranslate" style="font-weight:bold; font-size:1.1rem;">物件検索</div>', unsafe_allow_html=True)
     input_id = st.text_input("物件ID (TS_ID)", value=st.query_params.get("ts_id", ""))
@@ -161,7 +156,7 @@ with st.sidebar:
     l_year = st.number_input("ローン年数(年)", value=int(get_val("ローン年数", default=26)), step=1)
     l_rate = st.number_input("金利(%)", value=2.0, step=0.1)
 
-# --- 6. メイン表示エリア ---
+# --- 6. メイン画面 ---
 st.markdown('<div class="main-header-title">Value up 収支シミュレーション</div>', unsafe_allow_html=True)
 
 if not input_id:
@@ -169,13 +164,12 @@ if not input_id:
     st.stop()
 
 if not k_data:
-    st.error("物件が見つからないか、重複レコードとして除外されています。")
+    st.error("物件が見つかりません。")
     st.stop()
 
 p_name = k_data["物件名"]["value"] if "物件名" in k_data else "物件名未設定"
 st.markdown(f'<div class="property-name-display">物件名：{p_name}</div>', unsafe_allow_html=True)
 
-# 賃料設定
 st.markdown('<div class="section-title">賃料設定</div>', unsafe_allow_html=True)
 cols = st.columns(4)
 r_base = cols[0].number_input("仕入れ許容(万)", value=get_val("仕入れ許容賃料", divide=10000), step=0.1)
@@ -183,7 +177,6 @@ r_vu = cols[1].number_input("VU評価(万)", value=get_val("VU評価賃料", div
 r_mai = cols[2].number_input("マイソク(万)", value=get_val("マイソク賃料", divide=10000), step=0.1)
 r_ram = cols[3].number_input("RAM募集(万)", value=get_val("RAM募集賃料", divide=10000), step=0.1)
 
-# 計算処理
 mng_rep_total = m_fee + r_fee
 price_base = get_sales_price(r_base, mng_rep_total, y_base)
 price_vu = get_sales_price(r_vu, mng_rep_total, y_vu)
@@ -193,17 +186,12 @@ total_p = prof_a + prof_b
 rate_a = (prof_a / price_base * 100) if price_base != 0 else 0
 total_r = (total_p / price_vu * 100) if price_vu != 0 else 0
 
-# 粗利分析
 st.markdown('<div class="section-title">粗利分析</div>', unsafe_allow_html=True)
 s1, s2, s3 = st.columns(3)
-with s1:
-    st.markdown(f'<div class="metric-card"><div class="metric-label">仕入粗利</div><div class="metric-value">{prof_a:.1f}万</div><div style="color:#64748b; font-weight:600;">{rate_a:.2f}%</div></div>', unsafe_allow_html=True)
-with s2:
-    st.markdown(f'<div class="metric-card"><div class="metric-label">VU粗利</div><div class="metric-value">{prof_b:.1f}万</div><div style="color:#64748b; font-size:0.75rem;">工事費込</div></div>', unsafe_allow_html=True)
-with s3:
-    st.markdown(f'<div class="metric-card total-profit-card"><div class="metric-label">会社総粗利</div><div class="metric-value">{total_p:.1f}万</div><div style="font-weight:600;">{total_r:.2f}%</div></div>', unsafe_allow_html=True)
+with s1: st.markdown(f'<div class="metric-card"><div class="metric-label">仕入粗利</div><div class="metric-value">{prof_a:.1f}万</div><div style="color:#64748b; font-weight:600;">{rate_a:.2f}%</div></div>', unsafe_allow_html=True)
+with s2: st.markdown(f'<div class="metric-card"><div class="metric-label">VU粗利</div><div class="metric-value">{prof_b:.1f}万</div><div style="color:#64748b; font-size:0.75rem;">工事費込</div></div>', unsafe_allow_html=True)
+with s3: st.markdown(f'<div class="metric-card total-profit-card"><div class="metric-label">会社総粗利</div><div class="metric-value">{total_p:.1f}万</div><div style="font-weight:600;">{total_r:.2f}%</div></div>', unsafe_allow_html=True)
 
-# 販売詳細
 st.markdown('<div class="section-title">販売・CF詳細</div>', unsafe_allow_html=True)
 res_cols = st.columns(4)
 patterns = [("仕入れ時", r_base, price_base), ("VU評価時", r_vu, price_vu), ("マイソク", r_mai, price_vu), ("RAM募集", r_ram, price_vu)]
