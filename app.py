@@ -7,51 +7,37 @@ import unicodedata
 # --- 1. ページ基本設定 ---
 st.set_page_config(page_title="Value up 収支", layout="wide")
 
-# --- 2. 【Zenn記事準拠＋アイコン保護】翻訳バグを根本から遮断するスクリプト ---
-# window.top を使い、iframeの外側（ブラウザが直接見ている層）を日本語に固定します
+# --- 2. 【Zenn記事準拠】翻訳ポップアップ抑制の最終パッチ ---
+# window.top を使うことで、iframeの外側（ブラウザが見ている大元）を日本語に上書きします
 components.html("""
     <script>
-        const topDoc = window.top.document;
-        // 1. ページ全体を日本語に設定
-        topDoc.documentElement.lang = 'ja';
+        // 1. ページ最上層の言語を「ja」に強制変更（翻訳ポップアップの根本を止める）
+        window.top.document.documentElement.lang = "ja";
         
-        // 2. 翻訳エンジンに「このページは翻訳するな」とメタタグで念押し
-        if (!topDoc.querySelector('meta[name="google"]')) {
-            const meta = topDoc.createElement('meta');
-            meta.name = 'google';
-            meta.content = 'notranslate';
-            topDoc.head.appendChild(meta);
+        // 2. Google翻訳拒否メタタグを最上層のheadに注入
+        const topHead = window.top.document.getElementsByTagName('head')[0];
+        if (!window.top.document.querySelector('meta[name="google"]')) {
+            const meta = window.top.document.createElement('meta');
+            meta.name = "google";
+            meta.content = "notranslate";
+            topHead.appendChild(meta);
         }
-        
-        // 3. アイコンボタンそのものに「翻訳禁止」の属性を直接埋め込む
-        const protectIcons = () => {
-            const btn = topDoc.querySelector('button[data-testid="stSidebarCollapseButton"]');
-            if (btn) {
-                btn.classList.add('notranslate');
-                btn.setAttribute('translate', 'no');
-            }
-        };
-        // 画面の更新に合わせて繰り返し実行
-        setInterval(protectIcons, 500);
     </script>
 """, height=0)
 
-# --- 3. デザインCSS（青色デザイン & アイコン保護） ---
+# --- 3. デザインCSS（青色デザインの完全復元） ---
 st.markdown("""
     <style>
     /* 全体設定 */
     .stApp { background-color: #f8fafc; }
-    * { font-family: "Helvetica Neue", Arial, "Hiragino Kaku Gothic ProN", sans-serif !important; }
-
-    /* ★アイコンの文字化け（keyboard_...）をCSSレベルで絶対に出さない設定 */
-    [data-testid="stSidebarCollapseButton"] {
-        unicode-bidi: isolate !important;
-    }
-    .notranslate {
-        translate: no !important;
+    font { vertical-align: inherit !important; } 
+    
+    * { 
+        word-break: keep-all !important; 
+        font-family: "Helvetica Neue", Arial, "Hiragino Kaku Gothic ProN", "Hiragino Sans", Meiryo, sans-serif !important; 
     }
 
-    /* タイトル周り */
+    /* タイトルと物件名 */
     .main-header-title { font-size: 2rem; font-weight: 800; color: #0f172a; margin-bottom: 0.2rem; }
     .property-name-display { font-size: 1.2rem; font-weight: 700; color: #64748b; margin-bottom: 2rem; }
     .section-title { font-size: 1.2rem; font-weight: 800; color: #1e293b; border-left: 5px solid #3b82f6; padding-left: 12px; margin-top: 2rem; margin-bottom: 1rem; }
@@ -65,7 +51,7 @@ st.markdown("""
         font-weight: 800 !important;
     }
 
-    /* ボタンのスマホ対応サイズ */
+    /* ボタンのサイズアップ */
     div[data-testid="stNumberInput"] button { width: 50px !important; height: 45px !important; }
     div[data-testid="stNumberInput"] button:hover { background-color: #FF00A0 !important; color: white !important; }
 
@@ -74,6 +60,7 @@ st.markdown("""
         background-color: #ffffff; border: 1px solid #e2e8f0; 
         padding: 20px; border-radius: 10px; text-align: center; 
         height: 140px; display: flex; flex-direction: column; justify-content: center;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.05);
     }
     .metric-label { font-size: 0.9rem; color: #64748b; margin-bottom: 8px; font-weight: 600; }
     .metric-value { font-size: 1.6rem; font-weight: 800; color: #0f172a; }
@@ -83,7 +70,7 @@ st.markdown("""
     .total-profit-card .metric-label, .total-profit-card .metric-value { color: #3b82f6 !important; }
 
     /* 詳細カード */
-    .detail-card { background-color: #ffffff; padding: 15px; border-radius: 8px; border: 1px solid #f1f5f9; margin-top: 10px; box-shadow: 0 1px 2px rgba(0,0,0,0.05); }
+    .detail-card { background-color: #ffffff; padding: 15px; border-radius: 8px; border: 1px solid #f1f5f9; margin-top: 10px; }
     .detail-val-text { font-weight: 800; color: #1e293b; font-size: 1.1rem; }
     </style>
 """, unsafe_allow_html=True)
@@ -178,5 +165,3 @@ if input_id and k_data:
         pay = get_monthly_payment(s_price, l_year, l_rate)
         with res_cols[i]:
             st.markdown(f'<div class="detail-card"><div style="font-size:0.75rem;color:#94a3b8;font-weight:800;margin-bottom:6px;">{name}</div><div class="detail-item">販売: <span class="detail-val-text">{int(s_price):,}</span>万</div><div class="detail-item">CF: <span class="detail-val-text">{int(net_rent - pay):,}</span>円/月</div></div>', unsafe_allow_html=True)
-elif input_id:
-    st.error("物件が見つかりません。")
