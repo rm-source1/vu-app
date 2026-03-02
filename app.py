@@ -4,37 +4,62 @@ import requests
 import math
 import unicodedata
 
-# --- 1. ページ基本設定 ---
-st.set_page_config(page_title="Value up 収支", layout="wide")
+# --- 1. ページ基本設定（サイドバーを最初から開いた状態に固定） ---
+st.set_page_config(
+    page_title="Value up 収支", 
+    layout="wide", 
+    initial_sidebar_state="expanded"
+)
 
-# --- 2. 翻訳対策（Zenn記事準拠：window.topを使用して最上層を日本語化） ---
+# --- 2. 【究極パッチ】JavaScriptで親要素のボタンを直接破壊する ---
+# CSSで消えない場合、このJavaScriptがブラウザ上でボタンを直接見つけ出して削除します。
 components.html("""
     <script>
-        window.top.document.documentElement.lang = 'ja';
-        const meta = window.top.document.createElement('meta');
-        meta.name = 'google';
-        meta.content = 'notranslate';
-        window.top.document.getElementsByTagName('head')[0].appendChild(meta);
+        const nukeButton = () => {
+            const topDoc = window.top.document;
+            // あらゆる可能性のあるセレクタでボタンを特定
+            const selectors = [
+                'button[data-testid="stSidebarCollapseButton"]',
+                '.st-emotion-cache-qo60ru',
+                '.st-emotion-cache-1647z6a',
+                'button:has(svg:has(path[d*="M10"]))' 
+            ];
+            selectors.forEach(s => {
+                const el = topDoc.querySelector(s);
+                if (el) el.style.display = 'none';
+            });
+        };
+        // 1秒ごとにチェックして、ボタンが現れたら即座に消す
+        setInterval(nukeButton, 500);
     </script>
 """, height=0)
 
-# --- 3. デザインCSS（開閉ボタンを消してサイドバーを固定） ---
+# --- 3. デザインCSS（最強の !important 指定） ---
 st.markdown("""
     <style>
-    /* ① 翻訳バグの元凶「サイドバー開閉ボタン」を物理的に消去 */
-    button[data-testid="stSidebarCollapseButton"] {
+    /* 翻訳ポップアップを抑止するための lang 属性への干渉 */
+    font { vertical-align: inherit !important; }
+
+    /* ① 矢印ボタンを徹底的に非表示（あらゆる階層をターゲットに） */
+    [data-testid="stSidebarCollapseButton"],
+    div[class*="st-emotion-cache-"] button[class*="st-emotion-cache-"],
+    .stSidebarCollapseButton {
         display: none !important;
+        visibility: hidden !important;
+        width: 0 !important;
+        height: 0 !important;
     }
     
-    /* ② サイドバーを固定表示にする（スマホでの挙動を安定させる） */
+    /* ② サイドバーを左側に完全固定 */
     [data-testid="stSidebar"] {
         min-width: 320px !important;
         max-width: 320px !important;
+        visibility: visible !important;
+        display: block !important;
     }
 
-    /* ③ 全体の背景とフォント（翻訳による崩れを防止） */
+    /* デザインの安定化 */
     .stApp { background-color: #f8fafc; }
-    font { vertical-align: inherit !important; }
     * { 
         word-break: keep-all !important; 
         font-family: "Helvetica Neue", Arial, "Hiragino Kaku Gothic ProN", "Hiragino Sans", Meiryo, sans-serif !important; 
@@ -44,26 +69,18 @@ st.markdown("""
     .property-name-display { font-size: 1.2rem; font-weight: 700; color: #64748b; margin-bottom: 1.5rem; margin-left: 21px; }
     .section-title { font-size: 1.1rem; font-weight: 700; color: #1e293b; border-left: 3px solid #3b82f6; padding-left: 10px; margin-top: 1.2rem; margin-bottom: 0.8rem; }
     
-    /* ボタンのサイズアップ（スマホでの押しやすさ） */
+    /* ボタンのサイズアップ */
     div[data-testid="stNumberInput"] button { width: 50px !important; height: 45px !important; }
     div[data-testid="stNumberInput"] input { height: 45px !important; font-size: 1.1rem !important; }
 
     /* ピンクボタンデザイン */
-    div[data-testid="stNumberInput"] button:hover,
-    div[data-testid="stNumberInput"] button:active,
-    div[data-testid="stNumberInput"] button:focus {
+    div[data-testid="stNumberInput"] button:hover {
         background-color: #FF00A0 !important;
         border-color: #FF00A0 !important;
-        color: #000000 !important;
     }
 
-    /* カードデザイン */
-    .metric-card { background-color: #ffffff; border: 1px solid #e2e8f0; padding: 15px; border-radius: 8px; text-align: center; height: 120px; display: flex; flex-direction: column; justify-content: center; }
-    .metric-label { font-size: 0.8rem; color: #64748b; margin-bottom: 5px; }
+    .metric-card { background-color: #ffffff; border: 1px solid #e2e880; padding: 15px; border-radius: 8px; text-align: center; height: 120px; display: flex; flex-direction: column; justify-content: center; }
     .metric-value { font-size: 1.3rem; font-weight: 800; color: #0f172a; }
-    .rate-text { font-size: 0.9rem; font-weight: 600; margin-top: 4px; }
-    .detail-card { background-color: #ffffff; padding: 12px; border-radius: 8px; border: 1px solid #f1f5f9; margin-top: 10px; }
-    .detail-val-text { font-weight: 700; color: #1e293b; }
     </style>
 """, unsafe_allow_html=True)
 
@@ -92,12 +109,12 @@ def get_monthly_payment(principal_man, year, rate):
     if r == 0: return p / n
     return int(p * (r * (1 + r) ** n) / ((1 + r) ** n - 1))
 
-# --- 5. サイドバーレイアウト ---
+# --- 5. メイン画面 ---
 query_params = st.query_params
 url_ts_id = query_params.get("ts_id", "")
 
 with st.sidebar:
-    st.markdown('<div class="notranslate" style="font-weight:bold;">物件検索</div>', unsafe_allow_html=True)
+    st.markdown('<div style="font-weight:bold;">物件検索</div>', unsafe_allow_html=True)
     input_id = st.text_input("物件ID (TS_ID)", value=url_ts_id)
     k_data = fetch_kintone_data(input_id) if input_id else None
     
@@ -114,7 +131,7 @@ with st.sidebar:
         return default
 
     st.divider()
-    st.markdown('<div class="notranslate" style="font-weight:bold;">基本データ</div>', unsafe_allow_html=True)
+    st.markdown('<div style="font-weight:bold;">基本データ</div>', unsafe_allow_html=True)
     p_price = st.number_input("仕入価格(万)", value=int(get_val("仕入価格")), step=10)
     m_fee = st.number_input("管理費(円)", value=int(get_val("管理費")), step=100)
     r_fee = st.number_input("修繕積立金(円)", value=int(get_val("修繕積立金")), step=100)
@@ -126,19 +143,19 @@ with st.sidebar:
     l_year = st.number_input("ローン年数(年)", value=int(get_val("ローン年数", default=26)), step=1)
     l_rate = st.number_input("金利(%)", value=2.0, step=0.1)
 
-# --- 6. メイン画面レイアウト ---
-st.markdown('<div class="main-header-title notranslate">Value up 収支シミュレーション</div>', unsafe_allow_html=True)
+# メインエリア
+st.markdown('<div class="main-header-title">Value up 収支シミュレーション</div>', unsafe_allow_html=True)
 
 if not input_id:
-    st.info("左側のサイドバーに物件IDを入力してください。")
+    st.info("サイドバーに物件IDを入力してください。")
     st.stop()
 
 p_name = k_data["物件名"]["value"] if k_data and "物件名" in k_data else "物件名未設定"
-st.markdown(f'<div class="property-name-display notranslate">物件名：{p_name}</div>', unsafe_allow_html=True)
+st.markdown(f'<div class="property-name-display">物件名：{p_name}</div>', unsafe_allow_html=True)
 
 if not k_data: st.stop()
 
-st.markdown('<div class="section-title notranslate">賃料設定</div>', unsafe_allow_html=True)
+st.markdown('<div class="section-title">賃料設定</div>', unsafe_allow_html=True)
 cols = st.columns(4)
 r_base = cols[0].number_input("仕入れ許容(万)", value=get_val("仕入れ許容賃料", divide=10000), step=0.1)
 r_vu = cols[1].number_input("VU評価(万)", value=get_val("VU評価賃料", divide=10000), step=0.1)
@@ -155,20 +172,20 @@ total_p = prof_a + prof_b
 rate_a = (prof_a / price_base * 100) if price_base != 0 else 0
 total_r = (total_p / price_vu * 100) if price_vu != 0 else 0
 
-st.markdown('<div class="section-title notranslate">粗利分析</div>', unsafe_allow_html=True)
+st.markdown('<div class="section-title">粗利分析</div>', unsafe_allow_html=True)
 s1, s2, s3 = st.columns(3)
 with s1:
-    st.markdown(f'<div class="metric-card notranslate"><div class="metric-label">仕入粗利</div><div class="metric-value">{prof_a:.1f}<span style="font-size:0.8rem">万円</span></div><div class="rate-text" style="color:#64748b;">{rate_a:.2f}%</div></div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="metric-card"><div class="metric-label">仕入粗利</div><div class="metric-value">{prof_a:.1f}万</div><div class="rate-text">{rate_a:.2f}%</div></div>', unsafe_allow_html=True)
 with s2:
-    st.markdown(f'<div class="metric-card notranslate"><div class="metric-label">VU粗利</div><div class="metric-value">{prof_b:.1f}<span style="font-size:0.8rem">万円</span></div><div class="rate-text" style="color:#64748b; font-size:0.75rem;">工事費込</div></div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="metric-card"><div class="metric-label">VU粗利</div><div class="metric-value">{prof_b:.1f}万</div><div class="rate-text" style="color:#64748b; font-size:0.75rem;">工事費込</div></div>', unsafe_allow_html=True)
 with s3:
-    st.markdown(f'<div class="metric-card notranslate" style="border:2px solid #3b82f6; background-color:#f0f7ff;"><div class="metric-label" style="color:#3b82f6; font-weight:bold;">会社総粗利</div><div class="metric-value" style="color:#3b82f6;">{total_p:.1f}<span style="font-size:0.8rem">万円</span></div><div class="rate-text" style="color:#3b82f6;">{total_r:.2f}%</div></div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="metric-card" style="border:2px solid #3b82f6; background-color:#f0f7ff;"><div class="metric-label" style="color:#3b82f6; font-weight:bold;">会社総粗利</div><div class="metric-value" style="color:#3b82f6;">{total_p:.1f}万</div><div class="rate-text" style="color:#3b82f6;">{total_r:.2f}%</div></div>', unsafe_allow_html=True)
 
-st.markdown('<div class="section-title notranslate">販売・CF詳細</div>', unsafe_allow_html=True)
+st.markdown('<div class="section-title">販売・CF詳細</div>', unsafe_allow_html=True)
 res_cols = st.columns(4)
 patterns = [("仕入れ時", r_base, price_base), ("VU評価時", r_vu, price_vu), ("マイソク", r_mai, price_vu), ("RAM募集", r_ram, price_vu)]
 for i, (name, rent, s_price) in enumerate(patterns):
     net_rent = (rent * 10000) - mng_rep_total
     pay = get_monthly_payment(s_price, l_year, l_rate)
     with res_cols[i]:
-        st.markdown(f'<div class="detail-card notranslate"><div style="font-size:0.7rem;color:#94a3b8;font-weight:bold;margin-bottom:5px;">{name}</div><div class="detail-item">販売: <span class="detail-val-text">{int(s_price):,}</span>万円</div><div class="detail-item">CF: <span class="detail-val-text">{int(net_rent - pay):,}</span>円/月</div></div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="detail-card"><div style="font-size:0.7rem;color:#94a3b8;font-weight:bold;margin-bottom:5px;">{name}</div><div class="detail-item">販売: <span class="detail-val-text">{int(s_price):,}</span>万</div><div class="detail-item">CF: <span class="detail-val-text">{int(net_rent - pay):,}</span>円/月</div></div>', unsafe_allow_html=True)
