@@ -7,53 +7,50 @@ import unicodedata
 # --- 1. ページ基本設定 ---
 st.set_page_config(page_title="Value up 収支", layout="wide")
 
-# --- 2. 【究極パッチ】翻訳ポップアップ & アイコン文字化けを物理的に防ぐ ---
+# --- 2. 翻訳ポップアップ対策（念のため維持） ---
 components.html("""
     <script>
-        const parentDoc = window.parent.document;
-        
-        // 1. ページ全体の言語を「日本語」に固定（翻訳を誘発させない）
-        parentDoc.documentElement.lang = 'ja';
-        
-        // 2. 翻訳エンジンに「翻訳拒否」を命令
-        if (!parentDoc.querySelector('meta[name="google"]')) {
-            const meta = parentDoc.createElement('meta');
-            meta.name = 'google';
-            meta.content = 'notranslate';
-            parentDoc.head.appendChild(meta);
-        }
-
-        // 3. アイコン要素に「翻訳禁止」を強制付与し続ける
-        const fixIcons = () => {
-            const icons = parentDoc.querySelectorAll('span[data-testid="stSidebarCollapseIcon"], .st-emotion-cache-1f3583d');
-            icons.forEach(el => {
-                el.setAttribute('translate', 'no');
-                el.classList.add('notranslate');
-            });
-        };
-        
-        const observer = new MutationObserver(fixIcons);
-        observer.observe(parentDoc.body, { childList: true, subtree: true });
-        fixIcons();
+        window.parent.document.documentElement.lang = 'ja';
+        const meta = window.parent.document.createElement('meta');
+        meta.name = 'google';
+        meta.content = 'notranslate';
+        window.parent.document.getElementsByTagName('head')[0].appendChild(meta);
     </script>
 """, height=0)
 
-# --- 3. デザインCSS（アイコン文字を消す設定を追加） ---
+# --- 3. デザインCSS（Solution 1：アイコンの画像置換） ---
 st.markdown("""
     <style>
-    /* 翻訳エンジンが文字を書き出しても、それを画面に表示させないガード */
-    span[data-testid="stSidebarCollapseIcon"] {
-        font-size: 0 !important; /* 文字（keyboard_double...）を消す */
-        color: transparent !important;
-    }
+    /* 【解決策1】サイドバー開閉アイコンのテキストを完全に抹消し、画像に置き換える */
     
-    /* 代わりにSVGのアイコンだけを正しく表示させる */
-    span[data-testid="stSidebarCollapseIcon"] svg {
-        font-size: 1.5rem !important;
-        color: #64748b !important;
+    /* ① 元のテキスト(Ligature)を画面から消し去る */
+    span[data-testid="stSidebarCollapseIcon"] {
+        font-size: 0 !important;      /* 文字サイズを0に */
+        color: transparent !important; /* 透明に */
+        display: inline-block !important;
+        width: 24px !important;
+        height: 24px !important;
+        position: relative !important;
+    }
+
+    /* ② 翻訳されない「画像(SVG)」を疑似要素として流し込む */
+    span[data-testid="stSidebarCollapseIcon"]::before {
+        content: "";
+        position: absolute;
+        top: 0; left: 0; width: 24px; height: 24px;
+        /* グレーの矢印アイコン（SVGデータ） */
+        background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="%2364748b"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg>');
+        background-repeat: no-repeat;
+        background-size: contain;
         visibility: visible !important;
     }
 
+    /* サイドバーが「開いている時」は矢印を反転させる */
+    [data-testid="stSidebar"][aria-expanded="true"] ~ .main span[data-testid="stSidebarCollapseIcon"]::before {
+        transform: rotate(180deg);
+    }
+
+    /* --- 以下、安定したデザイン設定 --- */
     .stApp { background-color: #f8fafc; }
     font { vertical-align: inherit !important; }
     
@@ -66,26 +63,11 @@ st.markdown("""
     .property-name-display { font-size: 1.2rem; font-weight: 700; color: #64748b; margin-bottom: 1.5rem; margin-left: 21px; }
     .section-title { font-size: 1.1rem; font-weight: 700; color: #1e293b; border-left: 3px solid #3b82f6; padding-left: 10px; margin-top: 1.2rem; margin-bottom: 0.8rem; }
     
-    /* ボタンのサイズアップ */
-    div[data-testid="stNumberInput"] button {
-        width: 50px !important;
-        height: 45px !important;
-    }
-    div[data-testid="stNumberInput"] input {
-        height: 45px !important;
-        font-size: 1.1rem !important;
-    }
+    /* 大きなボタン（スマホ対応） */
+    div[data-testid="stNumberInput"] button { width: 50px !important; height: 45px !important; }
+    div[data-testid="stNumberInput"] input { height: 45px !important; font-size: 1.1rem !important; }
 
-    /* 特定項目の数字を青色に（太字） */
-    div[data-testid="stNumberInput"]:has(input[aria-label*="工事費"]) input,
-    div[data-testid="stNumberInput"]:has(input[aria-label*="VU評価"]) input,
-    div[data-testid="stNumberInput"]:has(input[aria-label*="マイソク"]) input,
-    div[data-testid="stNumberInput"]:has(input[aria-label*="RAM募集"]) input {
-        color: #3b82f6 !important;
-        font-weight: 700 !important;
-    }
-
-    /* ピンクボタンデザイン */
+    /* ピンクボタン */
     div[data-testid="stNumberInput"] button:hover,
     div[data-testid="stNumberInput"] button:active,
     div[data-testid="stNumberInput"] button:focus {
@@ -93,14 +75,8 @@ st.markdown("""
         border-color: #FF00A0 !important;
         color: #000000 !important;
     }
-    div[data-testid="stNumberInput"] button:hover svg,
-    div[data-testid="stNumberInput"] button:active svg,
-    div[data-testid="stNumberInput"] button:focus svg {
-        fill: #000000 !important;
-        stroke: #000000 !important;
-    }
 
-    /* 分析カード */
+    /* カードデザイン */
     .metric-card { background-color: #ffffff; border: 1px solid #e2e8f0; padding: 15px; border-radius: 8px; text-align: center; height: 120px; display: flex; flex-direction: column; justify-content: center; }
     .metric-label { font-size: 0.8rem; color: #64748b; margin-bottom: 5px; }
     .metric-value { font-size: 1.3rem; font-weight: 800; color: #0f172a; }
@@ -173,7 +149,7 @@ with st.sidebar:
 st.markdown('<div class="main-header-title notranslate">Value up 収支シミュレーション</div>', unsafe_allow_html=True)
 
 if not input_id:
-    st.info("左側のサイドバーに物件IDを入力してください。")
+    st.info("サイドバーに物件IDを入力してください。")
     st.stop()
 
 p_name = k_data["物件名"]["value"] if k_data and "物件名" in k_data else "物件名未設定"
@@ -188,7 +164,7 @@ r_vu = cols[1].number_input("VU評価(万)", value=get_val("VU評価賃料", div
 r_mai = cols[2].number_input("マイソク(万)", value=get_val("マイソク賃料", divide=10000), step=0.1, format="%.2f")
 r_ram = cols[3].number_input("RAM募集(万)", value=get_val("RAM募集賃料", divide=10000), step=0.1, format="%.2f")
 
-# 計算... (以下、変更なしのため省略。元のapp.pyの計算と表示を維持)
+# 計算
 mng_rep_total = m_fee + r_fee
 price_base = get_sales_price(r_base, mng_rep_total, y_base)
 price_vu = get_sales_price(r_vu, mng_rep_total, y_vu)
