@@ -7,42 +7,51 @@ import unicodedata
 # --- 1. ページ基本設定 ---
 st.set_page_config(page_title="Value up 収支", layout="wide")
 
-# --- 2. 【アイコン文字化け対策】翻訳エンジンによるアイコンのテキスト化を防止 ---
+# --- 2. 【究極パッチ】翻訳ポップアップ & アイコン文字化けを物理的に防ぐ ---
 components.html("""
     <script>
-        // 大元のページ（親ドキュメント）に対して設定
         const parentDoc = window.parent.document;
+        
+        // 1. ページ全体の言語を「日本語」に固定（翻訳を誘発させない）
         parentDoc.documentElement.lang = 'ja';
         
-        // Google翻訳防止メタタグ
+        // 2. 翻訳エンジンに「翻訳拒否」を命令
         if (!parentDoc.querySelector('meta[name="google"]')) {
             const meta = parentDoc.createElement('meta');
             meta.name = 'google';
             meta.content = 'notranslate';
             parentDoc.head.appendChild(meta);
         }
+
+        // 3. アイコン要素に「翻訳禁止」を強制付与し続ける
+        const fixIcons = () => {
+            const icons = parentDoc.querySelectorAll('span[data-testid="stSidebarCollapseIcon"], .st-emotion-cache-1f3583d');
+            icons.forEach(el => {
+                el.setAttribute('translate', 'no');
+                el.classList.add('notranslate');
+            });
+        };
         
-        // サイドバー開閉ボタンなどのアイコン要素を翻訳から保護する
-        const observer = new MutationObserver(() => {
-            const icons = parentDoc.querySelectorAll('span[data-testid="stSidebarCollapseIcon"]');
-            icons.forEach(icon => icon.classList.add('notranslate'));
-        });
-        observer.observe(parentDoc.body, { childList: True, subtree: True });
+        const observer = new MutationObserver(fixIcons);
+        observer.observe(parentDoc.body, { childList: true, subtree: true });
+        fixIcons();
     </script>
 """, height=0)
 
-# --- 3. デザインCSS（安定版 + アイコン保護） ---
+# --- 3. デザインCSS（アイコン文字を消す設定を追加） ---
 st.markdown("""
     <style>
-    /* 翻訳ガード：アイコン名の流出を防止 */
-    .stApp, [data-testid="stSidebar"], [data-testid="stSidebarNav"] {
-        unicode-bidi: isolate;
+    /* 翻訳エンジンが文字を書き出しても、それを画面に表示させないガード */
+    span[data-testid="stSidebarCollapseIcon"] {
+        font-size: 0 !important; /* 文字（keyboard_double...）を消す */
+        color: transparent !important;
     }
     
-    /* アイコン名がテキストで出ないように強制 */
-    span[data-testid="stSidebarCollapseIcon"] {
-        font-family: 'Material Icons' !important;
-        speak: none;
+    /* 代わりにSVGのアイコンだけを正しく表示させる */
+    span[data-testid="stSidebarCollapseIcon"] svg {
+        font-size: 1.5rem !important;
+        color: #64748b !important;
+        visibility: visible !important;
     }
 
     .stApp { background-color: #f8fafc; }
@@ -91,6 +100,7 @@ st.markdown("""
         stroke: #000000 !important;
     }
 
+    /* 分析カード */
     .metric-card { background-color: #ffffff; border: 1px solid #e2e8f0; padding: 15px; border-radius: 8px; text-align: center; height: 120px; display: flex; flex-direction: column; justify-content: center; }
     .metric-label { font-size: 0.8rem; color: #64748b; margin-bottom: 5px; }
     .metric-value { font-size: 1.3rem; font-weight: 800; color: #0f172a; }
@@ -178,6 +188,7 @@ r_vu = cols[1].number_input("VU評価(万)", value=get_val("VU評価賃料", div
 r_mai = cols[2].number_input("マイソク(万)", value=get_val("マイソク賃料", divide=10000), step=0.1, format="%.2f")
 r_ram = cols[3].number_input("RAM募集(万)", value=get_val("RAM募集賃料", divide=10000), step=0.1, format="%.2f")
 
+# 計算... (以下、変更なしのため省略。元のapp.pyの計算と表示を維持)
 mng_rep_total = m_fee + r_fee
 price_base = get_sales_price(r_base, mng_rep_total, y_base)
 price_vu = get_sales_price(r_vu, mng_rep_total, y_vu)
