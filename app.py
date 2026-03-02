@@ -7,27 +7,56 @@ import unicodedata
 # --- 1. ページ基本設定 ---
 st.set_page_config(page_title="Value up 収支", layout="wide")
 
-# --- 2. 【Zenn記事準拠】翻訳ポップアップ抑制の「最短・最強」の1行 ---
-# これだけでブラウザに「このページは最初から日本語だ」と伝え、ポップアップを最小限にします
+# --- 2. 【Zenn記事準拠＋アイコン保護】翻訳バグを根本から遮断するスクリプト ---
+# window.top を使い、iframeの外側（ブラウザが直接見ている層）を日本語に固定します
 components.html("""
     <script>
-        window.top.document.documentElement.lang = 'ja';
+        const topDoc = window.top.document;
+        // 1. ページ全体を日本語に設定
+        topDoc.documentElement.lang = 'ja';
+        
+        // 2. 翻訳エンジンに「このページは翻訳するな」とメタタグで念押し
+        if (!topDoc.querySelector('meta[name="google"]')) {
+            const meta = topDoc.createElement('meta');
+            meta.name = 'google';
+            meta.content = 'notranslate';
+            topDoc.head.appendChild(meta);
+        }
+        
+        // 3. アイコンボタンそのものに「翻訳禁止」の属性を直接埋め込む
+        const protectIcons = () => {
+            const btn = topDoc.querySelector('button[data-testid="stSidebarCollapseButton"]');
+            if (btn) {
+                btn.classList.add('notranslate');
+                btn.setAttribute('translate', 'no');
+            }
+        };
+        // 画面の更新に合わせて繰り返し実行
+        setInterval(protectIcons, 500);
     </script>
 """, height=0)
 
-# --- 3. デザインCSS（青色デザインの完全復元） ---
+# --- 3. デザインCSS（青色デザイン & アイコン保護） ---
 st.markdown("""
     <style>
     /* 全体設定 */
     .stApp { background-color: #f8fafc; }
     * { font-family: "Helvetica Neue", Arial, "Hiragino Kaku Gothic ProN", sans-serif !important; }
 
+    /* ★アイコンの文字化け（keyboard_...）をCSSレベルで絶対に出さない設定 */
+    [data-testid="stSidebarCollapseButton"] {
+        unicode-bidi: isolate !important;
+    }
+    .notranslate {
+        translate: no !important;
+    }
+
     /* タイトル周り */
     .main-header-title { font-size: 2rem; font-weight: 800; color: #0f172a; margin-bottom: 0.2rem; }
     .property-name-display { font-size: 1.2rem; font-weight: 700; color: #64748b; margin-bottom: 2rem; }
     .section-title { font-size: 1.2rem; font-weight: 800; color: #1e293b; border-left: 5px solid #3b82f6; padding-left: 12px; margin-top: 2rem; margin-bottom: 1rem; }
 
-    /* ★ 青色の入力文字（工事費、評価賃料など） */
+    /* ★ 特定項目の数字を青色に（太字） */
     div[data-testid="stNumberInput"]:has(input[aria-label*="工事費"]) input,
     div[data-testid="stNumberInput"]:has(input[aria-label*="VU評価"]) input,
     div[data-testid="stNumberInput"]:has(input[aria-label*="マイソク"]) input,
@@ -50,7 +79,7 @@ st.markdown("""
     .metric-value { font-size: 1.6rem; font-weight: 800; color: #0f172a; }
     
     /* ★ 会社総粗利（青枠ハイライト） */
-    .total-profit-card { border: 2.2px solid #3b82f6 !important; background-color: #f0f7ff !important; }
+    .total-profit-card { border: 2.5px solid #3b82f6 !important; background-color: #f0f7ff !important; }
     .total-profit-card .metric-label, .total-profit-card .metric-value { color: #3b82f6 !important; }
 
     /* 詳細カード */
@@ -59,7 +88,7 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# --- 4. 計算・データ取得（安定版） ---
+# --- 4. ロジック関数 ---
 def fetch_kintone_data(ts_id):
     clean_id = unicodedata.normalize('NFKC', str(ts_id)).strip()
     url = f"https://ga-tech.cybozu.com/k/v1/records.json"
@@ -83,9 +112,9 @@ def get_monthly_payment(principal_man, year, rate):
     if r == 0: return p / (n if n != 0 else 1)
     return int(p * (r * (1 + r) ** n) / ((1 + r) ** n - 1))
 
-# --- 5. メインロジック ---
+# --- 5. メイン表示 ---
 with st.sidebar:
-    st.header("物件検索")
+    st.markdown('<div class="notranslate" style="font-weight:bold; font-size:1.1rem;">物件検索</div>', unsafe_allow_html=True)
     input_id = st.text_input("物件ID (TS_ID)", value=st.query_params.get("ts_id", ""))
     k_data = fetch_kintone_data(input_id) if input_id else None
     
@@ -99,11 +128,12 @@ with st.sidebar:
         return default
 
     st.divider()
-    st.subheader("基本データ")
+    st.markdown('<div class="notranslate" style="font-weight:bold; font-size:1.1rem;">基本データ</div>', unsafe_allow_html=True)
     p_price = st.number_input("仕入価格(万)", value=int(get_val("仕入価格")), step=10)
     m_fee = st.number_input("管理費(円)", value=int(get_val("管理費")), step=100)
     r_fee = st.number_input("修繕積立金(円)", value=int(get_val("修繕積立金")), step=100)
     c_cost = st.number_input("工事費想定(万)", value=int(get_val("工事費想定")), step=10)
+    st.divider()
     y_base = st.number_input("利回り_仕入時(%)", value=get_val("利回り_仕入時"), step=0.1)
     y_vu = st.number_input("利回り_価格設定(%)", value=get_val("利回り_価格設定"), step=0.1)
     l_year = st.number_input("ローン年数(年)", value=int(get_val("ローン年数", default=26)), step=1)
@@ -150,5 +180,3 @@ if input_id and k_data:
             st.markdown(f'<div class="detail-card"><div style="font-size:0.75rem;color:#94a3b8;font-weight:800;margin-bottom:6px;">{name}</div><div class="detail-item">販売: <span class="detail-val-text">{int(s_price):,}</span>万</div><div class="detail-item">CF: <span class="detail-val-text">{int(net_rent - pay):,}</span>円/月</div></div>', unsafe_allow_html=True)
 elif input_id:
     st.error("物件が見つかりません。")
-else:
-    st.info("左側のサイドバーに物件IDを入力してください。")
