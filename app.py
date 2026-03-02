@@ -1,43 +1,64 @@
 import streamlit as st
+import streamlit.components.v1 as components
 import requests
 import math
 import unicodedata
 
-# --- 1. ページ基本設定 ---
+# --- 1. ページ基本設定（必ず最初に記述） ---
 st.set_page_config(page_title="Value up 収支", layout="wide")
 
-# --- 2. 【根本解決】サイドバー開閉ボタンを物理的に消去するCSS ---
+# --- 2. 【Zenn記事準拠】翻訳ポップアップ & アイコン文字化けの根本解決スクリプト ---
+# 記事の教え通り、window.top を使用して iframe の壁を完全に突き抜けます
+components.html("""
+    <script>
+        // 1. ページ最上層（window.top）の言語設定を日本語に固定
+        window.top.document.documentElement.lang = 'ja';
+        
+        // 2. 最上層の head に Google 翻訳拒否のメタタグを強制注入
+        const topHead = window.top.document.getElementsByTagName('head')[0];
+        if (!window.top.document.querySelector('meta[name="google"]')) {
+            const meta = window.top.document.createElement('meta');
+            meta.name = 'google';
+            meta.content = 'notranslate';
+            topHead.appendChild(meta);
+        }
+
+        // 3. アイコン文字化けの原因（keyboard_double等）を隠蔽するCSSを最上層に注入
+        const style = window.top.document.createElement('style');
+        style.innerHTML = `
+            /* アイコン名がテキストで露出するのを物理的に防ぐ */
+            .st-emotion-cache-1f3583d, span[data-testid="stSidebarCollapseIcon"] {
+                font-size: 0 !important;
+                color: transparent !important;
+            }
+            /* ツールチップ（ホバー時の文字）を非表示にする */
+            button[data-testid="stSidebarCollapseButton"]::after {
+                content: none !important;
+            }
+        `;
+        topHead.appendChild(style);
+    </script>
+""", height=0)
+
+# --- 3. デザインCSS（安定版デザイン） ---
 st.markdown("""
     <style>
-    /* ① 翻訳バグの元凶「サイドバー開閉ボタン」を非表示にする */
-    button[data-testid="stSidebarCollapseButton"] {
-        display: none !important;
-    }
-
-    /* ② サイドバーを左側に「固定」して、常に表示されるようにする（スマホでも安定） */
-    [data-testid="stSidebar"] {
-        min-width: 300px !important;
-        max-width: 300px !important;
-    }
-
-    /* デザインの安定化 */
     .stApp { background-color: #f8fafc; }
     * { 
         word-break: keep-all !important; 
         font-family: "Helvetica Neue", Arial, "Hiragino Kaku Gothic ProN", "Hiragino Sans", Meiryo, sans-serif !important; 
     }
     
-    /* ヘッダー・タイトル */
     .main-header-title { font-size: 1.8rem; font-weight: 800; color: #0f172a; border-left: 6px solid #3b82f6; padding-left: 15px; margin-bottom: 0.5rem; }
     .property-name-display { font-size: 1.2rem; font-weight: 700; color: #64748b; margin-bottom: 1.5rem; margin-left: 21px; }
     .section-title { font-size: 1.1rem; font-weight: 700; color: #1e293b; border-left: 3px solid #3b82f6; padding-left: 10px; margin-top: 1.2rem; margin-bottom: 0.8rem; }
     
-    /* 数字入力欄のサイズ（スマホで押し間違いを防ぐ） */
+    /* スマホで押しやすい大きなボタン */
     div[data-testid="stNumberInput"] button { width: 50px !important; height: 45px !important; }
     div[data-testid="stNumberInput"] input { height: 45px !important; font-size: 1.1rem !important; }
     
-    /* ピンクボタン */
-    div[data-testid="stNumberInput"] button:hover { background-color: #FF00A0 !important; }
+    /* ピンクボタン設定 */
+    div[data-testid="stNumberInput"] button:hover { background-color: #FF00A0 !important; border-color: #FF00A0 !important; }
 
     /* カードデザイン */
     .metric-card { background-color: #ffffff; border: 1px solid #e2e8f0; padding: 15px; border-radius: 8px; text-align: center; height: 120px; display: flex; flex-direction: column; justify-content: center; }
@@ -46,10 +67,11 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# --- 3. 取得・計算ロジック（変更なし） ---
+# --- 4. データ取得・計算ロジック（安定版） ---
 def fetch_kintone_data(ts_id):
     clean_id = unicodedata.normalize('NFKC', str(ts_id)).strip()
-    url = f"https://{st.secrets.get('KINTONE_SUBDOMAIN', 'ga-tech')}.cybozu.com/k/v1/records.json"
+    subdomain = st.secrets.get("KINTONE_SUBDOMAIN", "ga-tech")
+    url = f"https://{subdomain}.cybozu.com/k/v1/records.json"
     headers = {"X-Cybozu-API-Token": st.secrets["KINTONE_API_TOKEN"]}
     query = f'TS_ID = "{clean_id}"'
     if clean_id.isdigit(): query += f' or TS_ID = {clean_id}'
@@ -70,7 +92,7 @@ def get_monthly_payment(principal_man, year, rate):
     if r == 0: return p / n
     return int(p * (r * (1 + r) ** n) / ((1 + r) ** n - 1))
 
-# --- 4. メイン処理 ---
+# --- 5. メイン表示 ---
 query_params = st.query_params
 url_ts_id = query_params.get("ts_id", "")
 
@@ -107,7 +129,7 @@ with st.sidebar:
 st.markdown('<div class="main-header-title">Value up 収支シミュレーション</div>', unsafe_allow_html=True)
 
 if not input_id:
-    st.info("サイドバーに物件IDを入力してください。")
+    st.info("物件IDを入力して開始してください。")
     st.stop()
 
 p_name = k_data["物件名"]["value"] if k_data and "物件名" in k_data else "物件名未設定"
@@ -115,6 +137,7 @@ st.markdown(f'<div class="property-name-display">物件名：{p_name}</div>', un
 
 if not k_data: st.stop()
 
+# --- 賃料設定・計算結果表示 ---
 st.markdown('<div class="section-title">賃料設定</div>', unsafe_allow_html=True)
 cols = st.columns(4)
 r_base = cols[0].number_input("仕入れ許容(万)", value=get_val("仕入れ許容賃料", divide=10000), step=0.1)
@@ -122,7 +145,6 @@ r_vu = cols[1].number_input("VU評価(万)", value=get_val("VU評価賃料", div
 r_mai = cols[2].number_input("マイソク(万)", value=get_val("マイソク賃料", divide=10000), step=0.1)
 r_ram = cols[3].number_input("RAM募集(万)", value=get_val("RAM募集賃料", divide=10000), step=0.1)
 
-# 計算処理
 mng_rep_total = m_fee + r_fee
 price_base = get_sales_price(r_base, mng_rep_total, y_base)
 price_vu = get_sales_price(r_vu, mng_rep_total, y_vu)
@@ -136,7 +158,7 @@ total_r = (total_p / price_vu * 100) if price_vu != 0 else 0
 st.markdown('<div class="section-title">粗利分析</div>', unsafe_allow_html=True)
 s1, s2, s3 = st.columns(3)
 with s1:
-    st.markdown(f'<div class="metric-card"><div class="metric-label">仕入粗利</div><div class="metric-value">{prof_a:.1f}<span class="unit-small">万円</span></div><div class="rate-text" style="color:#64748b;">{rate_a:.2f}<span class="unit-small">%</span></div></div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="metric-card"><div class="metric-label">仕入粗利</div><div class="metric-value">{prof_a:.1f}<span class="unit-small">万円</span></div><div class="rate-text" style="color:#64748b;">{rate_a:.2f}%</div></div>', unsafe_allow_html=True)
 with s2:
     st.markdown(f'<div class="metric-card"><div class="metric-label">VU粗利</div><div class="metric-value">{prof_b:.1f}<span class="unit-small">万円</span></div><div class="rate-text" style="color:#64748b; font-size:0.75rem;">工事費 {int(c_cost)}万 込</div></div>', unsafe_allow_html=True)
 with s3:
