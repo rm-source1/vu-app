@@ -7,15 +7,22 @@ import unicodedata
 # --- 1. ページ基本設定 ---
 st.set_page_config(page_title="Value up 収支", layout="wide", initial_sidebar_state="expanded")
 
-# --- 2. 認証ロジック（成功時は表示を消去） ---
+# --- 2. 認証ロジック（URL自動認証の強化版） ---
 if "authenticated" not in st.session_state:
     st.session_state.authenticated = False
 
 target_password = st.secrets.get("APP_PASSWORD", "admin123")
-url_code = st.query_params.get("code", "")
 
-# URLパラメータでの自動認証チェック
-if url_code == target_password:
+# URLの「code」パラメータを取得（リスト形式で取得される可能性を考慮して文字列に変換）
+q_params = st.query_params
+url_code = q_params.get("code", "")
+
+# 修正ポイント：リスト形式で届いた場合でも先頭の文字列を取り出して比較する
+if isinstance(url_code, list):
+    url_code = url_code[0] if url_code else ""
+
+# URLコードが一致すれば即座に認証済みにする
+if url_code == str(target_password):
     st.session_state.authenticated = True
 
 # 未認証の場合のみ、サイドバーに認証UIを表示
@@ -23,7 +30,7 @@ if not st.session_state.authenticated:
     with st.sidebar:
         st.markdown('<div class="notranslate" style="font-weight:bold; font-size:1.1rem;">アクセス認証</div>', unsafe_allow_html=True)
         input_password = st.text_input("アクセスコードを入力", type="password")
-        if input_password == target_password:
+        if input_password == str(target_password):
             st.session_state.authenticated = True
             st.rerun()
         elif input_password:
@@ -31,8 +38,7 @@ if not st.session_state.authenticated:
         st.info("このアプリの閲覧にはアクセスコードが必要です。")
     st.stop() # 認証されるまで以下を一切読み込まない
 
-# --- 3. 【核：MutationObserver】翻訳バグ・アイコン文字化け対策 ---
-# 認証成功後のみ実行される
+# --- 3. 【核】翻訳バグ・アイコン文字化け対策 ---
 components.html("""
     <script>
         const nukeTranslation = () => {
@@ -91,7 +97,7 @@ st.markdown("""
     div[data-testid="stNumberInput"] button { width: 50px !important; height: 45px !important; }
     div[data-testid="stNumberInput"] button:hover { background-color: #FF00A0 !important; color: white !important; }
 
-    /* 粗利分析カードデザイン */
+    /* カードデザイン */
     .metric-card { 
         background-color: #ffffff; border: 1px solid #e2e8f0; padding: 20px; 
         border-radius: 10px; text-align: center; height: 140px; 
