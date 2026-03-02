@@ -11,7 +11,6 @@ st.set_page_config(page_title="Value up 収支", layout="wide", initial_sidebar_
 if "authenticated" not in st.session_state:
     st.session_state.authenticated = False
 
-# 文字列のゆらぎを排除して比較する関数
 def normalize_code(s):
     if not s: return ""
     s = unicodedata.normalize('NFKC', str(s))
@@ -20,11 +19,11 @@ def normalize_code(s):
 target_password = normalize_code(st.secrets.get("APP_PASSWORD", "admin123"))
 url_code = normalize_code(st.query_params.get("code", ""))
 
-# URLパラメータによる自動認証判定
+# 自動ログイン判定
 if url_code == target_password and target_password != "":
     st.session_state.authenticated = True
 
-# 未認証時のUI（診断情報は削除済み）
+# 未認証時のUI
 if not st.session_state.authenticated:
     with st.sidebar:
         st.markdown('<div class="notranslate" style="font-weight:bold; font-size:1.1rem;">アクセス認証</div>', unsafe_allow_html=True)
@@ -99,6 +98,7 @@ st.markdown("""
     .total-profit-card { border: 2.5px solid #3b82f6 !important; background-color: #f0f7ff !important; }
     .total-profit-card .metric-label, .total-profit-card .metric-value, .total-profit-card .rate-text { color: #3b82f6 !important; }
     .detail-card { background-color: #ffffff; padding: 15px; border-radius: 8px; border: 1px solid #f1f5f9; margin-top: 10px; }
+    .detail-item { font-size: 0.95rem; margin-bottom: 2px; color: #64748b; }
     .detail-val-text { font-weight: 800; color: #1e293b; font-size: 1.1rem; }
     </style>
 """, unsafe_allow_html=True)
@@ -127,7 +127,6 @@ def get_monthly_payment(principal_man, year, rate):
     if r == 0: return p / (n if n != 0 else 1)
     return int(p * (r * (1 + r) ** n) / ((1 + r) ** n - 1))
 
-# --- 6. サイドバー配置 ---
 with st.sidebar:
     st.markdown('<div class="notranslate" style="font-weight:bold; font-size:1.1rem;">物件検索</div>', unsafe_allow_html=True)
     input_id = st.text_input("物件ID (TS_ID)", value=st.query_params.get("ts_id", ""))
@@ -153,7 +152,7 @@ with st.sidebar:
     l_year = st.number_input("ローン年数(年)", value=int(get_val("ローン年数", default=26)), step=1)
     l_rate = st.number_input("金利(%)", value=2.0, step=0.1)
 
-# --- 7. メイン画面表示 ---
+# --- 6. メイン画面表示 ---
 st.markdown('<div class="main-header-title notranslate">Value up 収支シミュレーション</div>', unsafe_allow_html=True)
 if input_id and k_data:
     p_name = k_data["物件名"]["value"] if "物件名" in k_data else "物件名未設定"
@@ -185,7 +184,15 @@ if input_id and k_data:
     res_cols = st.columns(4)
     patterns = [("仕入れ時", r_base, price_base), ("VU評価時", r_vu, price_vu), ("マイソク", r_mai, price_vu), ("RAM募集", r_ram, price_vu)]
     for i, (name, rent, s_price) in enumerate(patterns):
-        net_rent = (rent * 10000) - mng_rep_total
+        net_rent_monthly = (rent * 10000) - mng_rep_total
         pay = get_monthly_payment(s_price, l_year, l_rate)
+        current_yield = (net_rent_monthly * 12) / (s_price * 10000) * 100 if s_price > 0 else 0
         with res_cols[i]:
-            st.markdown(f'<div class="detail-card notranslate"><div style="font-size:0.75rem;color:#94a3b8;font-weight:800;margin-bottom:6px;">{name}</div><div class="detail-item">販売: <span class="detail-val-text">{int(s_price):,}</span>万</div><div class="detail-item">CF: <span class="detail-val-text">{int(net_rent - pay):,}</span>円/月</div></div>', unsafe_allow_html=True)
+            st.markdown(f'''
+                <div class="detail-card notranslate">
+                    <div style="font-size:0.75rem;color:#94a3b8;font-weight:800;margin-bottom:6px;">{name}</div>
+                    <div class="detail-item">販売: <span class="detail-val-text">{int(s_price):,}</span>万</div>
+                    <div class="detail-item">利回り: <span class="detail-val-text">{current_yield:.2f}</span>%</div>
+                    <div class="detail-item">CF: <span class="detail-val-text">{int(net_rent_monthly - pay):,}</span>円/月</div>
+                </div>
+            ''', unsafe_allow_html=True)
