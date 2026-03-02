@@ -7,27 +7,47 @@ import unicodedata
 # --- 1. ページ基本設定 ---
 st.set_page_config(page_title="Value up 収支", layout="wide")
 
-# --- 2. 【安全版】翻訳対策：表示崩れを防ぐための属性注入 ---
-# 画面全体を「翻訳しない」という指示で包み、ブラウザに日本語であることを伝えます
+# --- 2. 【アイコン文字化け対策】翻訳エンジンによるアイコンのテキスト化を防止 ---
 components.html("""
     <script>
-        // ページ全体に翻訳拒否の設定を試みる
-        document.documentElement.lang = 'ja';
-        const meta = document.createElement('meta');
-        meta.name = 'google';
-        meta.content = 'notranslate';
-        document.getElementsByTagName('head')[0].appendChild(meta);
+        // 大元のページ（親ドキュメント）に対して設定
+        const parentDoc = window.parent.document;
+        parentDoc.documentElement.lang = 'ja';
+        
+        // Google翻訳防止メタタグ
+        if (!parentDoc.querySelector('meta[name="google"]')) {
+            const meta = parentDoc.createElement('meta');
+            meta.name = 'google';
+            meta.content = 'notranslate';
+            parentDoc.head.appendChild(meta);
+        }
+        
+        // サイドバー開閉ボタンなどのアイコン要素を翻訳から保護する
+        const observer = new MutationObserver(() => {
+            const icons = parentDoc.querySelectorAll('span[data-testid="stSidebarCollapseIcon"]');
+            icons.forEach(icon => icon.classList.add('notranslate'));
+        });
+        observer.observe(parentDoc.body, { childList: True, subtree: True });
     </script>
 """, height=0)
 
-# --- 3. デザインCSS（安定版） ---
+# --- 3. デザインCSS（安定版 + アイコン保護） ---
 st.markdown("""
     <style>
-    /* 翻訳による崩れを防止するガード */
-    .stApp { background-color: #f8fafc; }
-    font { vertical-align: inherit !important; } /* 翻訳タグが入っても位置をずらさない */
+    /* 翻訳ガード：アイコン名の流出を防止 */
+    .stApp, [data-testid="stSidebar"], [data-testid="stSidebarNav"] {
+        unicode-bidi: isolate;
+    }
     
-    /* フォント設定：日本語環境で最も安定するもの */
+    /* アイコン名がテキストで出ないように強制 */
+    span[data-testid="stSidebarCollapseIcon"] {
+        font-family: 'Material Icons' !important;
+        speak: none;
+    }
+
+    .stApp { background-color: #f8fafc; }
+    font { vertical-align: inherit !important; }
+    
     * { 
         word-break: keep-all !important; 
         font-family: "Helvetica Neue", Arial, "Hiragino Kaku Gothic ProN", "Hiragino Sans", Meiryo, sans-serif !important; 
@@ -71,27 +91,25 @@ st.markdown("""
         stroke: #000000 !important;
     }
 
-    /* 分析カード */
-    .metric-card { background-color: #ffffff; border: 1px solid #e2e8f0; padding: 15px; border-radius: 8px; text-align: center; height: 120px; display: flex; flex-direction: column; justify-content: center; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
+    .metric-card { background-color: #ffffff; border: 1px solid #e2e8f0; padding: 15px; border-radius: 8px; text-align: center; height: 120px; display: flex; flex-direction: column; justify-content: center; }
     .metric-label { font-size: 0.8rem; color: #64748b; margin-bottom: 5px; }
     .metric-value { font-size: 1.3rem; font-weight: 800; color: #0f172a; }
     .unit-small { font-size: 0.8rem; font-weight: normal; margin-left: 2px; }
     .rate-text { font-size: 0.9rem; font-weight: 600; margin-top: 4px; }
-    
     .detail-card { background-color: #ffffff; padding: 12px; border-radius: 8px; border: 1px solid #f1f5f9; margin-top: 10px; }
     .detail-item { font-size: 0.85rem; color: #64748b; line-height: 1.6; }
     .detail-val-text { font-weight: 700; color: #1e293b; }
     </style>
 """, unsafe_allow_html=True)
 
-# --- 4. 関数定義 ---
+# --- 4. 取得・計算ロジック（変更なし） ---
 def fetch_kintone_data(ts_id):
     clean_id = unicodedata.normalize('NFKC', str(ts_id)).strip()
-    url = f"https://{KINTONE_SUBDOMAIN}.cybozu.com/k/v1/records.json"
-    headers = {"X-Cybozu-API-Token": KINTONE_API_TOKEN}
+    url = f"https://{st.secrets.get('KINTONE_SUBDOMAIN', 'ga-tech')}.cybozu.com/k/v1/records.json"
+    headers = {"X-Cybozu-API-Token": st.secrets["KINTONE_API_TOKEN"]}
     query = f'TS_ID = "{clean_id}"'
     if clean_id.isdigit(): query += f' or TS_ID = {clean_id}'
-    params = {"app": KINTONE_APP_ID, "query": query}
+    params = {"app": "479", "query": query}
     try:
         resp = requests.get(url, headers=headers, params=params)
         data = resp.json()
@@ -108,11 +126,7 @@ def get_monthly_payment(principal_man, year, rate):
     if r == 0: return p / n
     return int(p * (r * (1 + r) ** n) / ((1 + r) ** n - 1))
 
-# --- 5. メインロジック ---
-KINTONE_SUBDOMAIN = "ga-tech"
-KINTONE_APP_ID = "479"
-KINTONE_API_TOKEN = st.secrets["KINTONE_API_TOKEN"]
-
+# --- 5. メイン画面 ---
 query_params = st.query_params
 url_ts_id = query_params.get("ts_id", "")
 
@@ -121,8 +135,7 @@ with st.sidebar:
     input_id = st.text_input("物件ID (TS_ID)", value=url_ts_id)
     k_data = fetch_kintone_data(input_id) if input_id else None
     
-    if input_id and not k_data:
-        st.error("物件が見つかりません")
+    if input_id and not k_data: st.error("物件が見つかりません")
 
     def get_val(field, default=0.0, divide=1):
         if k_data and field in k_data:
@@ -165,7 +178,6 @@ r_vu = cols[1].number_input("VU評価(万)", value=get_val("VU評価賃料", div
 r_mai = cols[2].number_input("マイソク(万)", value=get_val("マイソク賃料", divide=10000), step=0.1, format="%.2f")
 r_ram = cols[3].number_input("RAM募集(万)", value=get_val("RAM募集賃料", divide=10000), step=0.1, format="%.2f")
 
-# 計算
 mng_rep_total = m_fee + r_fee
 price_base = get_sales_price(r_base, mng_rep_total, y_base)
 price_vu = get_sales_price(r_vu, mng_rep_total, y_vu)
