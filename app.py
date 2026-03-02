@@ -7,42 +7,76 @@ import unicodedata
 # --- 1. ページ基本設定 ---
 st.set_page_config(page_title="Value up 収支", layout="wide")
 
-# --- 2. 【Zenn記事準拠】翻訳ポップアップ抑制の最終パッチ ---
-# window.top を使うことで、iframeの外側（ブラウザが見ている大元）を日本語に上書きします
+# --- 2. 【核：MutationObserver】ブラウザの挙動を監視・強制上書きし続けるスクリプト ---
+# 記事の教え通り window.top を使いつつ、監視(MutationObserver)を入れることで「判定スピード」に打ち勝ちます
 components.html("""
     <script>
-        // 1. ページ最上層の言語を「ja」に強制変更（翻訳ポップアップの根本を止める）
-        window.top.document.documentElement.lang = "ja";
-        
-        // 2. Google翻訳拒否メタタグを最上層のheadに注入
-        const topHead = window.top.document.getElementsByTagName('head')[0];
-        if (!window.top.document.querySelector('meta[name="google"]')) {
-            const meta = window.top.document.createElement('meta');
-            meta.name = "google";
-            meta.content = "notranslate";
-            topHead.appendChild(meta);
-        }
+        const nukeTranslation = () => {
+            const topDoc = window.top.document;
+            
+            // 1. 最上層の lang 属性を強制固定
+            if (topDoc.documentElement.lang !== 'ja') {
+                topDoc.documentElement.lang = 'ja';
+            }
+            
+            // 2. 翻訳を拒否するメタタグを head にねじ込む
+            if (!topDoc.querySelector('meta[name="google"]')) {
+                const meta = topDoc.createElement('meta');
+                meta.name = 'google';
+                meta.content = 'notranslate';
+                topDoc.head.appendChild(meta);
+            }
+
+            // 3. サイドバーの「矢印」ボタンの文字化けを物理的に防ぐ
+            // 内部テキスト(keyboard_...)を透明化し、翻訳エンジンが触れないようにします
+            const sidebarBtn = topDoc.querySelector('button[data-testid="stSidebarCollapseButton"]');
+            if (sidebarBtn) {
+                sidebarBtn.classList.add('notranslate');
+                sidebarBtn.setAttribute('translate', 'no');
+            }
+        };
+
+        // 画面に変化があるたびに実行（Streamlitの再描画に即応）
+        const observer = new MutationObserver(nukeTranslation);
+        observer.observe(window.top.document.body, { childList: true, subtree: true });
+        nukeTranslation();
     </script>
 """, height=0)
 
-# --- 3. デザインCSS（青色デザインの完全復元） ---
+# --- 3. 【究極：CSSによる画像置換】文字に頼らず、SVG画像として矢印を再定義 ---
 st.markdown("""
     <style>
-    /* 全体設定 */
+    /* 全体の背景と基本設定 */
     .stApp { background-color: #f8fafc; }
     font { vertical-align: inherit !important; } 
-    
-    * { 
-        word-break: keep-all !important; 
-        font-family: "Helvetica Neue", Arial, "Hiragino Kaku Gothic ProN", "Hiragino Sans", Meiryo, sans-serif !important; 
+
+    /* ★ 矢印アイコンの文字(keyboard_...)を物理的に消し、画像に置き換える */
+    /* これにより、翻訳エンジンが何をしようとアイコンが文字に戻ることは物理的に不可能になります */
+    span[data-testid="stSidebarCollapseIcon"] {
+        font-size: 0 !important;
+        color: transparent !important;
+        position: relative !important;
+        display: block !important;
+        width: 24px !important;
+        height: 24px !important;
+    }
+    span[data-testid="stSidebarCollapseIcon"]::before {
+        content: "";
+        position: absolute;
+        top: 0; left: 0; width: 24px; height: 24px;
+        /* 右向き矢印のSVG。文字ではないので翻訳されません */
+        background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="%2364748b"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg>');
+        background-repeat: no-repeat;
+        background-size: contain;
+        visibility: visible !important;
     }
 
-    /* タイトルと物件名 */
+    /* タイトルとデザイン復元 */
     .main-header-title { font-size: 2rem; font-weight: 800; color: #0f172a; margin-bottom: 0.2rem; }
     .property-name-display { font-size: 1.2rem; font-weight: 700; color: #64748b; margin-bottom: 2rem; }
     .section-title { font-size: 1.2rem; font-weight: 800; color: #1e293b; border-left: 5px solid #3b82f6; padding-left: 12px; margin-top: 2rem; margin-bottom: 1rem; }
 
-    /* ★ 特定項目の数字を青色に（太字） */
+    /* ★ 青色の入力文字（ご要望の復活） */
     div[data-testid="stNumberInput"]:has(input[aria-label*="工事費"]) input,
     div[data-testid="stNumberInput"]:has(input[aria-label*="VU評価"]) input,
     div[data-testid="stNumberInput"]:has(input[aria-label*="マイソク"]) input,
@@ -51,11 +85,11 @@ st.markdown("""
         font-weight: 800 !important;
     }
 
-    /* ボタンのサイズアップ */
+    /* 数値入力欄のボタンサイズアップ */
     div[data-testid="stNumberInput"] button { width: 50px !important; height: 45px !important; }
     div[data-testid="stNumberInput"] button:hover { background-color: #FF00A0 !important; color: white !important; }
 
-    /* 粗利分析カード */
+    /* 粗利分析カードデザイン */
     .metric-card { 
         background-color: #ffffff; border: 1px solid #e2e8f0; 
         padding: 20px; border-radius: 10px; text-align: center; 
@@ -65,7 +99,7 @@ st.markdown("""
     .metric-label { font-size: 0.9rem; color: #64748b; margin-bottom: 8px; font-weight: 600; }
     .metric-value { font-size: 1.6rem; font-weight: 800; color: #0f172a; }
     
-    /* ★ 会社総粗利（青枠ハイライト） */
+    /* ★ 会社総粗利（青枠ハイライトの復活） */
     .total-profit-card { border: 2.5px solid #3b82f6 !important; background-color: #f0f7ff !important; }
     .total-profit-card .metric-label, .total-profit-card .metric-value { color: #3b82f6 !important; }
 
@@ -75,7 +109,7 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# --- 4. ロジック関数 ---
+# --- 4. ロジック関数（安定版） ---
 def fetch_kintone_data(ts_id):
     clean_id = unicodedata.normalize('NFKC', str(ts_id)).strip()
     url = f"https://ga-tech.cybozu.com/k/v1/records.json"
@@ -99,7 +133,7 @@ def get_monthly_payment(principal_man, year, rate):
     if r == 0: return p / (n if n != 0 else 1)
     return int(p * (r * (1 + r) ** n) / ((1 + r) ** n - 1))
 
-# --- 5. メイン表示 ---
+# --- 5. サイドバー ---
 with st.sidebar:
     st.markdown('<div class="notranslate" style="font-weight:bold; font-size:1.1rem;">物件検索</div>', unsafe_allow_html=True)
     input_id = st.text_input("物件ID (TS_ID)", value=st.query_params.get("ts_id", ""))
@@ -120,19 +154,19 @@ with st.sidebar:
     m_fee = st.number_input("管理費(円)", value=int(get_val("管理費")), step=100)
     r_fee = st.number_input("修繕積立金(円)", value=int(get_val("修繕積立金")), step=100)
     c_cost = st.number_input("工事費想定(万)", value=int(get_val("工事費想定")), step=10)
-    st.divider()
     y_base = st.number_input("利回り_仕入時(%)", value=get_val("利回り_仕入時"), step=0.1)
     y_vu = st.number_input("利回り_価格設定(%)", value=get_val("利回り_価格設定"), step=0.1)
     l_year = st.number_input("ローン年数(年)", value=int(get_val("ローン年数", default=26)), step=1)
     l_rate = st.number_input("金利(%)", value=2.0, step=0.1)
 
-st.markdown('<div class="main-header-title">Value up 収支シミュレーション</div>', unsafe_allow_html=True)
+# --- 6. メイン画面 ---
+st.markdown('<div class="main-header-title notranslate">Value up 収支シミュレーション</div>', unsafe_allow_html=True)
 if input_id and k_data:
     p_name = k_data["物件名"]["value"] if "物件名" in k_data else "物件名未設定"
-    st.markdown(f'<div class="property-name-display">物件名：{p_name}</div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="property-name-display notranslate">物件名：{p_name}</div>', unsafe_allow_html=True)
 
     # 賃料設定
-    st.markdown('<div class="section-title">賃料設定</div>', unsafe_allow_html=True)
+    st.markdown('<div class="section-title notranslate">賃料設定</div>', unsafe_allow_html=True)
     cols = st.columns(4)
     r_base = cols[0].number_input("仕入れ許容(万)", value=get_val("仕入れ許容賃料", divide=10000), step=0.1)
     r_vu = cols[1].number_input("VU評価(万)", value=get_val("VU評価賃料", divide=10000), step=0.1)
@@ -150,18 +184,20 @@ if input_id and k_data:
     total_r = (total_p / price_vu * 100) if price_vu != 0 else 0
 
     # 粗利分析
-    st.markdown('<div class="section-title">粗利分析</div>', unsafe_allow_html=True)
+    st.markdown('<div class="section-title notranslate">粗利分析</div>', unsafe_allow_html=True)
     s1, s2, s3 = st.columns(3)
-    with s1: st.markdown(f'<div class="metric-card"><div class="metric-label">仕入粗利</div><div class="metric-value">{prof_a:.1f}万</div><div style="color:#64748b; font-weight:600;">{rate_a:.2f}%</div></div>', unsafe_allow_html=True)
-    with s2: st.markdown(f'<div class="metric-card"><div class="metric-label">VU粗利</div><div class="metric-value">{prof_b:.1f}万</div><div style="color:#64748b; font-size:0.75rem;">工事費込</div></div>', unsafe_allow_html=True)
-    with s3: st.markdown(f'<div class="metric-card total-profit-card"><div class="metric-label">会社総粗利</div><div class="metric-value">{total_p:.1f}万</div><div style="font-weight:600;">{total_r:.2f}%</div></div>', unsafe_allow_html=True)
+    with s1: st.markdown(f'<div class="metric-card notranslate"><div class="metric-label">仕入粗利</div><div class="metric-value">{prof_a:.1f}万</div><div style="color:#64748b; font-weight:600;">{rate_a:.2f}%</div></div>', unsafe_allow_html=True)
+    with s2: st.markdown(f'<div class="metric-card notranslate"><div class="metric-label">VU粗利</div><div class="metric-value">{prof_b:.1f}万</div><div style="color:#64748b; font-size:0.75rem;">工事費込</div></div>', unsafe_allow_html=True)
+    with s3: st.markdown(f'<div class="metric-card total-profit-card notranslate"><div class="metric-label">会社総粗利</div><div class="metric-value">{total_p:.1f}万</div><div style="font-weight:600;">{total_r:.2f}%</div></div>', unsafe_allow_html=True)
 
-    # 販売詳細
-    st.markdown('<div class="section-title">販売・CF詳細</div>', unsafe_allow_html=True)
+    # 販売・CF詳細
+    st.markdown('<div class="section-title notranslate">販売・CF詳細</div>', unsafe_allow_html=True)
     res_cols = st.columns(4)
     patterns = [("仕入れ時", r_base, price_base), ("VU評価時", r_vu, price_vu), ("マイソク", r_mai, price_vu), ("RAM募集", r_ram, price_vu)]
     for i, (name, rent, s_price) in enumerate(patterns):
         net_rent = (rent * 10000) - mng_rep_total
         pay = get_monthly_payment(s_price, l_year, l_rate)
         with res_cols[i]:
-            st.markdown(f'<div class="detail-card"><div style="font-size:0.75rem;color:#94a3b8;font-weight:800;margin-bottom:6px;">{name}</div><div class="detail-item">販売: <span class="detail-val-text">{int(s_price):,}</span>万</div><div class="detail-item">CF: <span class="detail-val-text">{int(net_rent - pay):,}</span>円/月</div></div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="detail-card notranslate"><div style="font-size:0.75rem;color:#94a3b8;font-weight:800;margin-bottom:6px;">{name}</div><div class="detail-item">販売: <span class="detail-val-text">{int(s_price):,}</span>万</div><div class="detail-item">CF: <span class="detail-val-text">{int(net_rent - pay):,}</span>円/月</div></div>', unsafe_allow_html=True)
+elif input_id:
+    st.error("物件IDが見つかりません。")
