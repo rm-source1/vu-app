@@ -7,28 +7,35 @@ import unicodedata
 # --- 1. ページ基本設定 ---
 st.set_page_config(page_title="Value up 収支", layout="wide", initial_sidebar_state="expanded")
 
-# --- 2. 認証ロジック（型変換と空白削除を徹底し、自動ログインを確実化） ---
+# --- 2. 認証ロジック（デバッグ機能付き） ---
 if "authenticated" not in st.session_state:
     st.session_state.authenticated = False
 
-# Secretsからパスワードを取得し、文字列化・空白削除を徹底
+# Secretsから取得（ここが最優先）
 target_password = str(st.secrets.get("APP_PASSWORD", "admin123")).strip()
 
-# URLパラメータから 'code' を取得
-# 最新のStreamlit仕様に合わせて、確実に文字列として抽出します
-url_code = st.query_params.get("code", "")
+# URLパラメータ取得の徹底（新しい方式と古い方式の両方を試す）
+q_params = st.query_params
+url_code = q_params.get("code", "")
+
+# リストで取得された場合の処理
 if isinstance(url_code, list):
     url_code = url_code[0] if url_code else ""
 
-# 比較（両方の空白を消して、文字列として比較）
-if str(url_code).strip() == target_password:
+url_code = str(url_code).strip()
+
+# 【デバッグ用表示】※自動ログインが成功したら、この3行を消してもOKです
+# st.write(f"DEBUG: URLから届いたコード = '{url_code}'")
+# st.write(f"DEBUG: 設定されている正解 = '{target_password}'")
+
+# 比較と認証
+if url_code == target_password and url_code != "":
     st.session_state.authenticated = True
 
-# 未認証の場合のみ、サイドバーに認証UIを表示
+# 未認証時のUI
 if not st.session_state.authenticated:
     with st.sidebar:
         st.markdown('<div class="notranslate" style="font-weight:bold; font-size:1.1rem;">アクセス認証</div>', unsafe_allow_html=True)
-        # 手動入力
         input_password = st.text_input("アクセスコードを入力", type="password")
         if input_password.strip() == target_password:
             st.session_state.authenticated = True
@@ -36,10 +43,9 @@ if not st.session_state.authenticated:
         elif input_password:
             st.error("コードが正しくありません")
         st.info("このアプリの閲覧にはアクセスコードが必要です。")
-    st.stop() # 認証されるまで以下を一切実行・表示しない
+    st.stop()
 
 # --- 3. 【核】翻訳バグ・アイコン文字化け対策 ---
-# 認証成功後のみ注入される
 components.html("""
     <script>
         const nukeTranslation = () => {
@@ -65,13 +71,11 @@ components.html("""
     </script>
 """, height=0)
 
-# --- 4. デザインCSS（青色強調・アイコン保護） ---
+# --- 4. デザインCSS（青色強調・アイコン保護・VU工事費修正反映） ---
 st.markdown("""
     <style>
     .stApp { background-color: #f8fafc; }
     font { vertical-align: inherit !important; } 
-
-    /* 矢印アイコンを画像に置き換え（翻訳文字化け防止） */
     span[data-testid="stSidebarCollapseIcon"] {
         font-size: 0 !important; color: transparent !important;
         position: relative !important; display: block !important;
@@ -82,23 +86,17 @@ st.markdown("""
         background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="%2364748b"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg>');
         background-repeat: no-repeat; background-size: contain; visibility: visible !important;
     }
-
     .main-header-title { font-size: 2rem; font-weight: 800; color: #0f172a; margin-bottom: 0.2rem; }
     .property-name-display { font-size: 1.2rem; font-weight: 700; color: #64748b; margin-bottom: 2rem; }
     .section-title { font-size: 1.2rem; font-weight: 800; color: #1e293b; border-left: 5px solid #3b82f6; padding-left: 12px; margin-top: 2rem; margin-bottom: 1rem; }
-
-    /* 特定入力項目の数字を青色に */
     div[data-testid="stNumberInput"]:has(input[aria-label*="工事費"]) input,
     div[data-testid="stNumberInput"]:has(input[aria-label*="VU評価"]) input,
     div[data-testid="stNumberInput"]:has(input[aria-label*="マイソク"]) input,
     div[data-testid="stNumberInput"]:has(input[aria-label*="RAM募集"]) input {
         color: #3b82f6 !important; font-weight: 800 !important;
     }
-
     div[data-testid="stNumberInput"] button { width: 50px !important; height: 45px !important; }
     div[data-testid="stNumberInput"] button:hover { background-color: #FF00A0 !important; color: white !important; }
-
-    /* 粗利分析カード */
     .metric-card { 
         background-color: #ffffff; border: 1px solid #e2e8f0; padding: 20px; 
         border-radius: 10px; text-align: center; height: 140px; 
@@ -108,7 +106,6 @@ st.markdown("""
     .metric-value { font-size: 1.6rem; font-weight: 800; color: #0f172a; }
     .total-profit-card { border: 2.5px solid #3b82f6 !important; background-color: #f0f7ff !important; }
     .total-profit-card .metric-label, .total-profit-card .metric-value, .total-profit-card .rate-text { color: #3b82f6 !important; }
-
     .detail-card { background-color: #ffffff; padding: 15px; border-radius: 8px; border: 1px solid #f1f5f9; margin-top: 10px; }
     .detail-val-text { font-weight: 800; color: #1e293b; font-size: 1.1rem; }
     </style>
@@ -188,10 +185,7 @@ if input_id and k_data:
     st.markdown('<div class="section-title notranslate">粗利分析</div>', unsafe_allow_html=True)
     s1, s2, s3 = st.columns(3)
     with s1: st.markdown(f'<div class="metric-card notranslate"><div class="metric-label">仕入粗利</div><div class="metric-value">{prof_a:.1f}万</div><div style="color:#64748b; font-weight:600;">{rate_a:.2f}%</div></div>', unsafe_allow_html=True)
-    
-    # VU粗利カード：工事費の表示修正（込なし）
     with s2: st.markdown(f'<div class="metric-card notranslate"><div class="metric-label">VU粗利</div><div class="metric-value">{prof_b:.1f}万</div><div style="color:#64748b; font-size:0.75rem;">工事費 {int(c_cost)}万円</div></div>', unsafe_allow_html=True)
-    
     with s3: st.markdown(f'<div class="metric-card total-profit-card notranslate"><div class="metric-label">会社総粗利</div><div class="metric-value">{total_p:.1f}万</div><div class="rate-text" style="font-weight:600;">{total_r:.2f}%</div></div>', unsafe_allow_html=True)
 
     st.markdown('<div class="section-title notranslate">販売・CF詳細</div>', unsafe_allow_html=True)
