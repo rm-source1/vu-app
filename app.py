@@ -7,26 +7,32 @@ import unicodedata
 # --- 1. ページ基本設定 ---
 st.set_page_config(page_title="Value up 収支", layout="wide", initial_sidebar_state="expanded")
 
-# --- 2. 簡易パスワード認証 ---
-# サイドバーの最上部にパスワード入力を配置します
-with st.sidebar:
-    st.markdown('<div class="notranslate" style="font-weight:bold; font-size:1.1rem;">認証</div>', unsafe_allow_html=True)
-    input_password = st.text_input("パスワードを入力", type="password")
-    
-    # StreamlitのSecrets設定からパスワードを取得します
-    # まだ設定していない場合は、一時的に "admin123" などで動くようにしておきます
-    target_password = st.secrets.get("APP_PASSWORD", "admin123")
+# --- 2. 認証ロジック（成功時は表示を消去） ---
+if "authenticated" not in st.session_state:
+    st.session_state.authenticated = False
 
-    if input_password != target_password:
-        if input_password: # 何か入力されたが間違っている場合
-            st.error("パスワードが正しくありません。")
-        else:
-            st.info("閲覧にはパスワードが必要です。")
-        st.stop() # ここでプログラムを停止させ、以下を表示させない
-    else:
-        st.success("認証に成功しました。")
+target_password = st.secrets.get("APP_PASSWORD", "admin123")
+url_code = st.query_params.get("code", "")
 
-# --- 3. 【核：MutationObserver】ブラウザの翻訳バグを監視・強制上書き ---
+# URLパラメータでの自動認証チェック
+if url_code == target_password:
+    st.session_state.authenticated = True
+
+# 未認証の場合のみ、サイドバーに認証UIを表示
+if not st.session_state.authenticated:
+    with st.sidebar:
+        st.markdown('<div class="notranslate" style="font-weight:bold; font-size:1.1rem;">アクセス認証</div>', unsafe_allow_html=True)
+        input_password = st.text_input("アクセスコードを入力", type="password")
+        if input_password == target_password:
+            st.session_state.authenticated = True
+            st.rerun()
+        elif input_password:
+            st.error("コードが正しくありません")
+        st.info("このアプリの閲覧にはアクセスコードが必要です。")
+    st.stop() # 認証されるまで以下を一切読み込まない
+
+# --- 3. 【核：MutationObserver】翻訳バグ・アイコン文字化け対策 ---
+# 認証成功後のみ実行される
 components.html("""
     <script>
         const nukeTranslation = () => {
@@ -52,32 +58,24 @@ components.html("""
     </script>
 """, height=0)
 
-# --- 4. 【究極：CSSによる画像置換】アイコン保護とデザイン復元 ---
+# --- 4. デザインCSS（青色強調・アイコン保護） ---
 st.markdown("""
     <style>
     .stApp { background-color: #f8fafc; }
     font { vertical-align: inherit !important; } 
 
-    /* 矢印アイコンの文字化けを物理的に消し、画像に置き換える */
+    /* 矢印アイコンを画像に置き換え */
     span[data-testid="stSidebarCollapseIcon"] {
-        font-size: 0 !important;
-        color: transparent !important;
-        position: relative !important;
-        display: block !important;
-        width: 24px !important;
-        height: 24px !important;
+        font-size: 0 !important; color: transparent !important;
+        position: relative !important; display: block !important;
+        width: 24px !important; height: 24px !important;
     }
     span[data-testid="stSidebarCollapseIcon"]::before {
-        content: "";
-        position: absolute;
-        top: 0; left: 0; width: 24px; height: 24px;
+        content: ""; position: absolute; top: 0; left: 0; width: 24px; height: 24px;
         background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="%2364748b"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg>');
-        background-repeat: no-repeat;
-        background-size: contain;
-        visibility: visible !important;
+        background-repeat: no-repeat; background-size: contain; visibility: visible !important;
     }
 
-    /* タイトル周り */
     .main-header-title { font-size: 2rem; font-weight: 800; color: #0f172a; margin-bottom: 0.2rem; }
     .property-name-display { font-size: 1.2rem; font-weight: 700; color: #64748b; margin-bottom: 2rem; }
     .section-title { font-size: 1.2rem; font-weight: 800; color: #1e293b; border-left: 5px solid #3b82f6; padding-left: 12px; margin-top: 2rem; margin-bottom: 1rem; }
@@ -87,25 +85,20 @@ st.markdown("""
     div[data-testid="stNumberInput"]:has(input[aria-label*="VU評価"]) input,
     div[data-testid="stNumberInput"]:has(input[aria-label*="マイソク"]) input,
     div[data-testid="stNumberInput"]:has(input[aria-label*="RAM募集"]) input {
-        color: #3b82f6 !important;
-        font-weight: 800 !important;
+        color: #3b82f6 !important; font-weight: 800 !important;
     }
 
-    /* ボタンサイズアップ */
     div[data-testid="stNumberInput"] button { width: 50px !important; height: 45px !important; }
     div[data-testid="stNumberInput"] button:hover { background-color: #FF00A0 !important; color: white !important; }
 
-    /* 粗利分析カード */
+    /* 粗利分析カードデザイン */
     .metric-card { 
-        background-color: #ffffff; border: 1px solid #e2e8f0; 
-        padding: 20px; border-radius: 10px; text-align: center; 
-        height: 140px; display: flex; flex-direction: column; justify-content: center;
+        background-color: #ffffff; border: 1px solid #e2e8f0; padding: 20px; 
+        border-radius: 10px; text-align: center; height: 140px; 
+        display: flex; flex-direction: column; justify-content: center;
         box-shadow: 0 1px 3px rgba(0,0,0,0.05);
     }
-    .metric-label { font-size: 0.9rem; color: #64748b; margin-bottom: 8px; font-weight: 600; }
     .metric-value { font-size: 1.6rem; font-weight: 800; color: #0f172a; }
-    
-    /* 会社総粗利（青枠ハイライト） */
     .total-profit-card { border: 2.5px solid #3b82f6 !important; background-color: #f0f7ff !important; }
     .total-profit-card .metric-label, .total-profit-card .metric-value, .total-profit-card .rate-text { color: #3b82f6 !important; }
 
@@ -138,9 +131,8 @@ def get_monthly_payment(principal_man, year, rate):
     if r == 0: return p / (n if n != 0 else 1)
     return int(p * (r * (1 + r) ** n) / ((1 + r) ** n - 1))
 
-# --- 6. メイン画面の実行（認証後のみ） ---
+# --- 6. メイン画面表示 ---
 with st.sidebar:
-    st.divider()
     st.markdown('<div class="notranslate" style="font-weight:bold; font-size:1.1rem;">物件検索</div>', unsafe_allow_html=True)
     input_id = st.text_input("物件ID (TS_ID)", value=st.query_params.get("ts_id", ""))
     k_data = fetch_kintone_data(input_id) if input_id else None
@@ -149,8 +141,7 @@ with st.sidebar:
         if k_data and field in k_data:
             val = k_data[field].get("value")
             if not val: return default
-            try:
-                return float(str(val).replace(',', '').strip()) / divide
+            try: return float(str(val).replace(',', '').strip()) / divide
             except: return default
         return default
 
@@ -160,6 +151,7 @@ with st.sidebar:
     m_fee = st.number_input("管理費(円)", value=int(get_val("管理費")), step=100)
     r_fee = st.number_input("修繕積立金(円)", value=int(get_val("修繕積立金")), step=100)
     c_cost = st.number_input("工事費想定(万)", value=int(get_val("工事費想定")), step=10)
+    st.divider()
     y_base = st.number_input("利回り_仕入時(%)", value=get_val("利回り_仕入時"), step=0.1)
     y_vu = st.number_input("利回り_価格設定(%)", value=get_val("利回り_価格設定"), step=0.1)
     l_year = st.number_input("ローン年数(年)", value=int(get_val("ローン年数", default=26)), step=1)
@@ -200,5 +192,3 @@ if input_id and k_data:
         pay = get_monthly_payment(s_price, l_year, l_rate)
         with res_cols[i]:
             st.markdown(f'<div class="detail-card notranslate"><div style="font-size:0.75rem;color:#94a3b8;font-weight:800;margin-bottom:6px;">{name}</div><div class="detail-item">販売: <span class="detail-val-text">{int(s_price):,}</span>万</div><div class="detail-item">CF: <span class="detail-val-text">{int(net_rent - pay):,}</span>円/月</div></div>', unsafe_allow_html=True)
-elif input_id:
-    st.error("物件IDが見つかりません。")
