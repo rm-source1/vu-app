@@ -4,87 +4,73 @@ import requests
 import math
 import unicodedata
 
-# --- 1. ページ基本設定 ---
+# --- 1. ページ基本設定（必ず最初） ---
 st.set_page_config(page_title="Value up 収支", layout="wide")
 
-# --- 2. 翻訳ポップアップ対策（念のため維持） ---
+# --- 2. 【最速解決】ホバー時のツールチップと文字を物理的に消去するスクリプト ---
 components.html("""
     <script>
-        window.parent.document.documentElement.lang = 'ja';
-        const meta = window.parent.document.createElement('meta');
-        meta.name = 'google';
-        meta.content = 'notranslate';
-        window.parent.document.getElementsByTagName('head')[0].appendChild(meta);
+        const deleteTooltip = () => {
+            const parentDoc = window.parent.document;
+            // サイドバー開閉ボタンを取得
+            const buttons = parentDoc.querySelectorAll('button[data-testid="stSidebarCollapseButton"]');
+            buttons.forEach(btn => {
+                // ブラウザがホバー時に表示する「文字情報」をすべて削除
+                btn.removeAttribute('title');
+                btn.removeAttribute('aria-label');
+                // 中にあるテキスト要素も念のため空にする
+                const spans = btn.querySelectorAll('span');
+                spans.forEach(s => { if(s.innerText.includes('keyboard')) s.innerText = ''; });
+            });
+        };
+        // 画面が動くたびに実行（Streamlitの再描画に対応）
+        const observer = new MutationObserver(deleteTooltip);
+        observer.observe(window.parent.document.body, { childList: true, subtree: true });
+        deleteTooltip();
     </script>
 """, height=0)
 
-# --- 3. デザインCSS（Solution 1：アイコンの画像置換） ---
+# --- 3. デザインCSS（Solution 1：完全版） ---
 st.markdown("""
     <style>
-    /* 【解決策1】サイドバー開閉アイコンのテキストを完全に抹消し、画像に置き換える */
-    
-    /* ① 元のテキスト(Ligature)を画面から消し去る */
-    span[data-testid="stSidebarCollapseIcon"] {
-        font-size: 0 !important;      /* 文字サイズを0に */
-        color: transparent !important; /* 透明に */
-        display: inline-block !important;
-        width: 24px !important;
-        height: 24px !important;
-        position: relative !important;
+    /* 1. ボタン内の既存アイコンとテキストを完全に抹消（ホバー時も） */
+    button[data-testid="stSidebarCollapseButton"] span,
+    button[data-testid="stSidebarCollapseButton"] svg {
+        display: none !important;
+        visibility: hidden !important;
+        opacity: 0 !important;
     }
 
-    /* ② 翻訳されない「画像(SVG)」を疑似要素として流し込む */
-    span[data-testid="stSidebarCollapseIcon"]::before {
+    /* 2. ボタン自体を画像化する（文字ではないので翻訳もホバー文字も出ない） */
+    button[data-testid="stSidebarCollapseButton"]::after {
         content: "";
-        position: absolute;
-        top: 0; left: 0; width: 24px; height: 24px;
-        /* グレーの矢印アイコン（SVGデータ） */
+        display: block;
+        width: 24px;
+        height: 24px;
+        margin: auto;
+        /* グレーの矢印アイコン（SVG）を直接背景にセット */
         background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="%2364748b"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg>');
         background-repeat: no-repeat;
         background-size: contain;
-        visibility: visible !important;
     }
 
-    /* サイドバーが「開いている時」は矢印を反転させる */
-    [data-testid="stSidebar"][aria-expanded="true"] ~ .main span[data-testid="stSidebarCollapseIcon"]::before {
+    /* サイドバーが開いている時は矢印を反転 */
+    [data-testid="stSidebar"][aria-expanded="true"] ~ .main button[data-testid="stSidebarCollapseButton"]::after {
         transform: rotate(180deg);
     }
 
-    /* --- 以下、安定したデザイン設定 --- */
+    /* --- 以下、安定したデザイン（変更なし） --- */
     .stApp { background-color: #f8fafc; }
-    font { vertical-align: inherit !important; }
-    
-    * { 
-        word-break: keep-all !important; 
-        font-family: "Helvetica Neue", Arial, "Hiragino Kaku Gothic ProN", "Hiragino Sans", Meiryo, sans-serif !important; 
-    }
-    
+    * { word-break: keep-all !important; font-family: "Helvetica Neue", Arial, sans-serif !important; }
     .main-header-title { font-size: 1.8rem; font-weight: 800; color: #0f172a; border-left: 6px solid #3b82f6; padding-left: 15px; margin-bottom: 0.5rem; }
     .property-name-display { font-size: 1.2rem; font-weight: 700; color: #64748b; margin-bottom: 1.5rem; margin-left: 21px; }
     .section-title { font-size: 1.1rem; font-weight: 700; color: #1e293b; border-left: 3px solid #3b82f6; padding-left: 10px; margin-top: 1.2rem; margin-bottom: 0.8rem; }
-    
-    /* 大きなボタン（スマホ対応） */
     div[data-testid="stNumberInput"] button { width: 50px !important; height: 45px !important; }
     div[data-testid="stNumberInput"] input { height: 45px !important; font-size: 1.1rem !important; }
-
-    /* ピンクボタン */
-    div[data-testid="stNumberInput"] button:hover,
-    div[data-testid="stNumberInput"] button:active,
-    div[data-testid="stNumberInput"] button:focus {
-        background-color: #FF00A0 !important;
-        border-color: #FF00A0 !important;
-        color: #000000 !important;
-    }
-
-    /* カードデザイン */
+    div[data-testid="stNumberInput"] button:hover { background-color: #FF00A0 !important; }
     .metric-card { background-color: #ffffff; border: 1px solid #e2e8f0; padding: 15px; border-radius: 8px; text-align: center; height: 120px; display: flex; flex-direction: column; justify-content: center; }
-    .metric-label { font-size: 0.8rem; color: #64748b; margin-bottom: 5px; }
-    .metric-value { font-size: 1.3rem; font-weight: 800; color: #0f172a; }
-    .unit-small { font-size: 0.8rem; font-weight: normal; margin-left: 2px; }
-    .rate-text { font-size: 0.9rem; font-weight: 600; margin-top: 4px; }
+    .metric-value { font-size: 1.3rem; font-weight: 800; }
     .detail-card { background-color: #ffffff; padding: 12px; border-radius: 8px; border: 1px solid #f1f5f9; margin-top: 10px; }
-    .detail-item { font-size: 0.85rem; color: #64748b; line-height: 1.6; }
-    .detail-val-text { font-weight: 700; color: #1e293b; }
     </style>
 """, unsafe_allow_html=True)
 
