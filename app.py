@@ -7,55 +7,56 @@ import unicodedata
 # --- 1. ページ基本設定 ---
 st.set_page_config(page_title="Value up 収支", layout="wide", initial_sidebar_state="expanded")
 
-# --- 2. 認証ロジック（サイドバー内デバッグ表示版） ---
+# --- 2. 認証ロジック（正規化・不可視文字除去・大文字小文字無視） ---
 if "authenticated" not in st.session_state:
     st.session_state.authenticated = False
 
-# Secretsから取得
-target_password = str(st.secrets.get("APP_PASSWORD", "admin123")).strip()
+# 文字列を極限までクリーンにする関数
+def normalize_code(s):
+    if not s: return ""
+    # NFKC正規化（全角英数字を半角に、特殊文字を標準的なものに変換）
+    s = unicodedata.normalize('NFKC', str(s))
+    # 小文字化、空白・改行・不可視文字の完全除去
+    return "".join(s.split()).lower()
 
-# URLパラメータ取得（新しい辞書形式で確実に取得）
-url_params = st.query_params.to_dict()
-url_code = url_params.get("code", "").strip()
+# SecretsとURLからコードを取得してクリーンアップ
+target_password = normalize_code(st.secrets.get("APP_PASSWORD", "admin123"))
+url_code = normalize_code(st.query_params.get("code", ""))
 
-# 自動ログイン判定
-if url_code == target_password and url_code != "":
+# 自動ログイン判定（厳格な比較）
+if url_code == target_password and target_password != "":
     st.session_state.authenticated = True
 
-# 未認証時の処理
+# 未認証時のみサイドバーにUIと診断情報を表示
 if not st.session_state.authenticated:
     with st.sidebar:
         st.markdown('<div class="notranslate" style="font-weight:bold; font-size:1.1rem;">アクセス認証</div>', unsafe_allow_html=True)
         
-        # --- ここからデバッグ情報（認証失敗時のみサイドバーに表示） ---
-        st.write("---")
-        st.write("🔍 **診断情報**")
-        st.write(f"・URLのcode: `{url_code}`")
-        # セキュリティのためSecretsの正解は伏せ字で表示（文字数確認用）
-        st.write(f"・設定済みの正解（文字数）: {len(target_password)}文字")
-        st.write("---")
+        # --- 徹底診断ボード ---
+        with st.expander("🔍 認証が通らない場合の診断"):
+            st.write(f"・URLコード: `[{url_code}]` ({len(url_code)}文字)")
+            st.write(f"・設定正解: `[{target_password}]` ({len(target_password)}文字)")
+            st.write(f"・一致判定: **{'一致' if url_code == target_password else '不一致'}**")
+            st.warning("上記が『一致』なのに画面が止まる場合は、ブラウザの再読み込みを試してください。")
         
         input_password = st.text_input("アクセスコードを入力", type="password")
-        if input_password.strip() == target_password:
+        if normalize_code(input_password) == target_password:
             st.session_state.authenticated = True
             st.rerun()
         elif input_password:
             st.error("コードが正しくありません")
-        st.info("閲覧にはパスワードまたは正しいURLが必要です。")
-    st.stop() # 認証されるまで以下を表示しない
+        st.info("このアプリの閲覧にはアクセスコードが必要です。")
+    st.stop()
 
-# --- 3. 【核：MutationObserver】翻訳バグ・アイコン文字化け対策 ---
+# --- 3. 【核】翻訳バグ・アイコン文字化け対策 ---
 components.html("""
     <script>
         const nukeTranslation = () => {
             const topDoc = window.top.document;
-            if (topDoc.documentElement.lang !== 'ja') {
-                topDoc.documentElement.lang = 'ja';
-            }
+            if (topDoc.documentElement.lang !== 'ja') { topDoc.documentElement.lang = 'ja'; }
             if (!topDoc.querySelector('meta[name="google"]')) {
                 const meta = topDoc.createElement('meta');
-                meta.name = 'google';
-                meta.content = 'notranslate';
+                meta.name = 'google'; meta.content = 'notranslate';
                 topDoc.head.appendChild(meta);
             }
             const sidebarBtn = topDoc.querySelector('button[data-testid="stSidebarCollapseButton"]');
@@ -110,9 +111,9 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# --- 5. ロジック関数 ---
+# --- 5. ロジック・表示 ---
 def fetch_kintone_data(ts_id):
-    clean_id = unicodedata.normalize('NFKC', str(ts_id)).strip()
+    clean_id = normalize_code(ts_id)
     url = f"https://ga-tech.cybozu.com/k/v1/records.json"
     headers = {"X-Cybozu-API-Token": st.secrets["KINTONE_API_TOKEN"]}
     query = f'TS_ID = "{clean_id}"'
@@ -134,7 +135,6 @@ def get_monthly_payment(principal_man, year, rate):
     if r == 0: return p / (n if n != 0 else 1)
     return int(p * (r * (1 + r) ** n) / ((1 + r) ** n - 1))
 
-# --- 6. メイン画面表示 ---
 with st.sidebar:
     st.markdown('<div class="notranslate" style="font-weight:bold; font-size:1.1rem;">物件検索</div>', unsafe_allow_html=True)
     input_id = st.text_input("物件ID (TS_ID)", value=st.query_params.get("ts_id", ""))
