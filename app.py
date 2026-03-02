@@ -11,43 +11,38 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# --- 2. 【翻訳バグ・矢印復活パッチ】最上層(window.top)への命令 ---
+# --- 2. 【最重要】矢印アイコンを物理的に守り、翻訳を拒否する究極パッチ ---
+# これが欠けると、画像にあるような "keyboard_double" という文字が露出します。
 components.html("""
     <script>
         const topDoc = window.top.document;
         
-        // 1. ページ全体を日本語に設定
+        // ① ブラウザに「ここは日本語だ」と叩き込む
         topDoc.documentElement.lang = 'ja';
         
-        // 2. Google翻訳拒否メタタグを注入
+        // ② Google翻訳に「勝手に翻訳するな」と命令する
         if (!topDoc.querySelector('meta[name="google"]')) {
             const meta = topDoc.createElement('meta');
             meta.name = "google";
             meta.content = "notranslate";
             topDoc.head.appendChild(meta);
         }
-        
-        // 3. アイコン文字化け(keyboard_...)を物理的に消し、SVGで矢印を描画
-        const style = topDoc.createElement('style');
-        style.innerHTML = `
-            span[data-testid="stSidebarCollapseIcon"] {
-                font-size: 0 !important;
-                color: transparent !important;
+
+        // ③ 矢印ボタンを「翻訳禁止対象」として強制マークし、説明文（title）を消す
+        const protectIcon = () => {
+            const btn = topDoc.querySelector('button[data-testid="stSidebarCollapseButton"]');
+            if (btn) {
+                btn.setAttribute('translate', 'no');
+                btn.classList.add('notranslate');
+                btn.removeAttribute('title'); // ホバー時の英語を消去
+                btn.removeAttribute('aria-label');
             }
-            span[data-testid="stSidebarCollapseIcon"]::after {
-                content: "";
-                display: block;
-                width: 24px; height: 24px;
-                background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="gray"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg>');
-                background-size: contain;
-                visibility: visible;
-            }
-        `;
-        topDoc.head.appendChild(style);
+        };
+        setInterval(protectIcon, 500); // 0.5秒おきに監視して保護
     </script>
 """, height=0)
 
-# --- 3. デザインCSS（青色強調・カードデザインの完全復元） ---
+# --- 3. デザインCSS（青色強調デザインの完全復元） ---
 st.markdown("""
     <style>
     .stApp { background-color: #f8fafc; }
@@ -58,11 +53,29 @@ st.markdown("""
         font-family: "Helvetica Neue", Arial, "Hiragino Kaku Gothic ProN", "Hiragino Sans", Meiryo, sans-serif !important; 
     }
 
+    /* タイトルと物件名 */
     .main-header-title { font-size: 2rem; font-weight: 800; color: #0f172a; margin-bottom: 0.2rem; }
     .property-name-display { font-size: 1.2rem; font-weight: 700; color: #64748b; margin-bottom: 2rem; }
     .section-title { font-size: 1.2rem; font-weight: 800; color: #1e293b; border-left: 5px solid #3b82f6; padding-left: 12px; margin-top: 2rem; margin-bottom: 1rem; }
 
-    /* 工事費・評価賃料・マイソク・RAM募集の数字を「青色」に */
+    /* ★ 矢印アイコンの文字(keyboard_...)を物理的に消し、画像に置き換える（二重の守り） */
+    span[data-testid="stSidebarCollapseIcon"] {
+        font-size: 0 !important;
+        color: transparent !important;
+        display: block !important;
+        width: 24px !important;
+        height: 24px !important;
+        background-repeat: no-repeat !important;
+        background-size: contain !important;
+        /* 右向き矢印のSVGをセット */
+        background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%2364748b'%3E%3Cpath d='M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z'/%3E%3C/svg%3E") !important;
+    }
+    /* サイドバーが開いている時の矢印向き（左向きに反転） */
+    [data-testid="stSidebar"][aria-expanded="true"] ~ .main span[data-testid="stSidebarCollapseIcon"] {
+        background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%2364748b'%3E%3Cpath d='M15.41 16.59L10.83 12l4.58-4.59L14 6l-6 6 6 6 1.41-1.41z'/%3E%3C/svg%3E") !important;
+    }
+
+    /* ★ 工事費・評価賃料・マイソク・RAM募集の数字を「青色」に */
     div[data-testid="stNumberInput"]:has(input[aria-label*="工事費"]) input,
     div[data-testid="stNumberInput"]:has(input[aria-label*="VU評価"]) input,
     div[data-testid="stNumberInput"]:has(input[aria-label*="マイソク"]) input,
@@ -84,7 +97,7 @@ st.markdown("""
     }
     .metric-value { font-size: 1.6rem; font-weight: 800; color: #0f172a; }
     
-    /* 会社総粗利（青枠ハイライト） */
+    /* ★ 会社総粗利（青枠ハイライト） */
     .total-profit-card { border: 2.5px solid #3b82f6 !important; background-color: #f0f7ff !important; }
     .total-profit-card .metric-label, .total-profit-card .metric-value { color: #3b82f6 !important; }
 
@@ -93,7 +106,7 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# --- 4. kintoneデータ取得（シンプル版：最新を1件取得） ---
+# --- 4. kintoneデータ取得（最新1件を確実に取得） ---
 def fetch_kintone_data(ts_id):
     clean_id = unicodedata.normalize('NFKC', str(ts_id)).strip()
     url = f"https://ga-tech.cybozu.com/k/v1/records.json"
@@ -104,7 +117,7 @@ def fetch_kintone_data(ts_id):
         query += f' or TS_ID = {clean_id}'
     query += ')'
     
-    # 重複があっても一番新しい（IDが大きい）レコードを優先します
+    # 重複があっても最新のレコードを1件取得
     params = {
         "app": "479",
         "query": f'{query} order by $id desc limit 1'
@@ -157,7 +170,7 @@ with st.sidebar:
     l_rate = st.number_input("金利(%)", value=2.0, step=0.1)
 
 # --- 6. メイン画面 ---
-st.markdown('<div class="main-header-title">Value up 収支シミュレーション</div>', unsafe_allow_html=True)
+st.markdown('<div class="main-header-title notranslate">Value up 収支シミュレーション</div>', unsafe_allow_html=True)
 
 if not input_id:
     st.info("左側のサイドバーに物件IDを入力してください。")
@@ -168,9 +181,9 @@ if not k_data:
     st.stop()
 
 p_name = k_data["物件名"]["value"] if "物件名" in k_data else "物件名未設定"
-st.markdown(f'<div class="property-name-display">物件名：{p_name}</div>', unsafe_allow_html=True)
+st.markdown(f'<div class="property-name-display notranslate">物件名：{p_name}</div>', unsafe_allow_html=True)
 
-st.markdown('<div class="section-title">賃料設定</div>', unsafe_allow_html=True)
+st.markdown('<div class="section-title notranslate">賃料設定</div>', unsafe_allow_html=True)
 cols = st.columns(4)
 r_base = cols[0].number_input("仕入れ許容(万)", value=get_val("仕入れ許容賃料", divide=10000), step=0.1)
 r_vu = cols[1].number_input("VU評価(万)", value=get_val("VU評価賃料", divide=10000), step=0.1)
@@ -186,17 +199,17 @@ total_p = prof_a + prof_b
 rate_a = (prof_a / price_base * 100) if price_base != 0 else 0
 total_r = (total_p / price_vu * 100) if price_vu != 0 else 0
 
-st.markdown('<div class="section-title">粗利分析</div>', unsafe_allow_html=True)
+st.markdown('<div class="section-title notranslate">粗利分析</div>', unsafe_allow_html=True)
 s1, s2, s3 = st.columns(3)
-with s1: st.markdown(f'<div class="metric-card"><div class="metric-label">仕入粗利</div><div class="metric-value">{prof_a:.1f}万</div><div style="color:#64748b; font-weight:600;">{rate_a:.2f}%</div></div>', unsafe_allow_html=True)
-with s2: st.markdown(f'<div class="metric-card"><div class="metric-label">VU粗利</div><div class="metric-value">{prof_b:.1f}万</div><div style="color:#64748b; font-size:0.75rem;">工事費込</div></div>', unsafe_allow_html=True)
-with s3: st.markdown(f'<div class="metric-card total-profit-card"><div class="metric-label">会社総粗利</div><div class="metric-value">{total_p:.1f}万</div><div style="font-weight:600;">{total_r:.2f}%</div></div>', unsafe_allow_html=True)
+with s1: st.markdown(f'<div class="metric-card notranslate"><div class="metric-label">仕入粗利</div><div class="metric-value">{prof_a:.1f}万</div><div style="color:#64748b; font-weight:600;">{rate_a:.2f}%</div></div>', unsafe_allow_html=True)
+with s2: st.markdown(f'<div class="metric-card notranslate"><div class="metric-label">VU粗利</div><div class="metric-value">{prof_b:.1f}万</div><div style="color:#64748b; font-size:0.75rem;">工事費込</div></div>', unsafe_allow_html=True)
+with s3: st.markdown(f'<div class="metric-card total-profit-card notranslate"><div class="metric-label">会社総粗利</div><div class="metric-value">{total_p:.1f}万</div><div style="font-weight:600;">{total_r:.2f}%</div></div>', unsafe_allow_html=True)
 
-st.markdown('<div class="section-title">販売・CF詳細</div>', unsafe_allow_html=True)
+st.markdown('<div class="section-title notranslate">販売・CF詳細</div>', unsafe_allow_html=True)
 res_cols = st.columns(4)
 patterns = [("仕入れ時", r_base, price_base), ("VU評価時", r_vu, price_vu), ("マイソク", r_mai, price_vu), ("RAM募集", r_ram, price_vu)]
 for i, (name, rent, s_price) in enumerate(patterns):
     net_rent = (rent * 10000) - mng_rep_total
     pay = get_monthly_payment(s_price, l_year, l_rate)
     with res_cols[i]:
-        st.markdown(f'<div class="detail-card"><div style="font-size:0.75rem;color:#94a3b8;font-weight:800;margin-bottom:6px;">{name}</div><div class="detail-item">販売: <span class="detail-val-text">{int(s_price):,}</span>万</div><div class="detail-item">CF: <span class="detail-val-text">{int(net_rent - pay):,}</span>円/月</div></div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="detail-card notranslate"><div style="font-size:0.75rem;color:#94a3b8;font-weight:800;margin-bottom:6px;">{name}</div><div class="detail-item">販売: <span class="detail-val-text">{int(s_price):,}</span>万</div><div class="detail-item">CF: <span class="detail-val-text">{int(net_rent - pay):,}</span>円/月</div></div>', unsafe_allow_html=True)
