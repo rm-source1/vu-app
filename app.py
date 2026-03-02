@@ -7,38 +7,27 @@ import unicodedata
 # --- 1. ページ基本設定 ---
 st.set_page_config(page_title="Value up 収支", layout="wide", initial_sidebar_state="expanded")
 
-# --- 2. 認証ロジック（正規化・不可視文字除去・大文字小文字無視） ---
+# --- 2. 認証ロジック（クリーン版） ---
 if "authenticated" not in st.session_state:
     st.session_state.authenticated = False
 
-# 文字列を極限までクリーンにする関数
+# 文字列のゆらぎを排除して比較する関数
 def normalize_code(s):
     if not s: return ""
-    # NFKC正規化（全角英数字を半角に、特殊文字を標準的なものに変換）
     s = unicodedata.normalize('NFKC', str(s))
-    # 小文字化、空白・改行・不可視文字の完全除去
     return "".join(s.split()).lower()
 
-# SecretsとURLからコードを取得してクリーンアップ
 target_password = normalize_code(st.secrets.get("APP_PASSWORD", "admin123"))
 url_code = normalize_code(st.query_params.get("code", ""))
 
-# 自動ログイン判定（厳格な比較）
+# URLパラメータによる自動認証判定
 if url_code == target_password and target_password != "":
     st.session_state.authenticated = True
 
-# 未認証時のみサイドバーにUIと診断情報を表示
+# 未認証時のUI（診断情報は削除済み）
 if not st.session_state.authenticated:
     with st.sidebar:
         st.markdown('<div class="notranslate" style="font-weight:bold; font-size:1.1rem;">アクセス認証</div>', unsafe_allow_html=True)
-        
-        # --- 徹底診断ボード ---
-        with st.expander("🔍 認証が通らない場合の診断"):
-            st.write(f"・URLコード: `[{url_code}]` ({len(url_code)}文字)")
-            st.write(f"・設定正解: `[{target_password}]` ({len(target_password)}文字)")
-            st.write(f"・一致判定: **{'一致' if url_code == target_password else '不一致'}**")
-            st.warning("上記が『一致』なのに画面が止まる場合は、ブラウザの再読み込みを試してください。")
-        
         input_password = st.text_input("アクセスコードを入力", type="password")
         if normalize_code(input_password) == target_password:
             st.session_state.authenticated = True
@@ -71,11 +60,12 @@ components.html("""
     </script>
 """, height=0)
 
-# --- 4. デザインCSS（青色強調・アイコン保護） ---
+# --- 4. デザインCSS ---
 st.markdown("""
     <style>
     .stApp { background-color: #f8fafc; }
     font { vertical-align: inherit !important; } 
+    /* 矢印アイコンの保護 */
     span[data-testid="stSidebarCollapseIcon"] {
         font-size: 0 !important; color: transparent !important;
         position: relative !important; display: block !important;
@@ -89,6 +79,7 @@ st.markdown("""
     .main-header-title { font-size: 2rem; font-weight: 800; color: #0f172a; margin-bottom: 0.2rem; }
     .property-name-display { font-size: 1.2rem; font-weight: 700; color: #64748b; margin-bottom: 2rem; }
     .section-title { font-size: 1.2rem; font-weight: 800; color: #1e293b; border-left: 5px solid #3b82f6; padding-left: 12px; margin-top: 2rem; margin-bottom: 1rem; }
+    /* 数字の青色強調 */
     div[data-testid="stNumberInput"]:has(input[aria-label*="工事費"]) input,
     div[data-testid="stNumberInput"]:has(input[aria-label*="VU評価"]) input,
     div[data-testid="stNumberInput"]:has(input[aria-label*="マイソク"]) input,
@@ -97,6 +88,7 @@ st.markdown("""
     }
     div[data-testid="stNumberInput"] button { width: 50px !important; height: 45px !important; }
     div[data-testid="stNumberInput"] button:hover { background-color: #FF00A0 !important; color: white !important; }
+    /* カードデザイン */
     .metric-card { 
         background-color: #ffffff; border: 1px solid #e2e8f0; padding: 20px; 
         border-radius: 10px; text-align: center; height: 140px; 
@@ -111,7 +103,7 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# --- 5. ロジック・表示 ---
+# --- 5. ロジック関数 ---
 def fetch_kintone_data(ts_id):
     clean_id = normalize_code(ts_id)
     url = f"https://ga-tech.cybozu.com/k/v1/records.json"
@@ -135,6 +127,7 @@ def get_monthly_payment(principal_man, year, rate):
     if r == 0: return p / (n if n != 0 else 1)
     return int(p * (r * (1 + r) ** n) / ((1 + r) ** n - 1))
 
+# --- 6. サイドバー配置 ---
 with st.sidebar:
     st.markdown('<div class="notranslate" style="font-weight:bold; font-size:1.1rem;">物件検索</div>', unsafe_allow_html=True)
     input_id = st.text_input("物件ID (TS_ID)", value=st.query_params.get("ts_id", ""))
@@ -160,6 +153,7 @@ with st.sidebar:
     l_year = st.number_input("ローン年数(年)", value=int(get_val("ローン年数", default=26)), step=1)
     l_rate = st.number_input("金利(%)", value=2.0, step=0.1)
 
+# --- 7. メイン画面表示 ---
 st.markdown('<div class="main-header-title notranslate">Value up 収支シミュレーション</div>', unsafe_allow_html=True)
 if input_id and k_data:
     p_name = k_data["物件名"]["value"] if "物件名" in k_data else "物件名未設定"
