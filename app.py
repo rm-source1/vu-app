@@ -5,50 +5,60 @@ import math
 import unicodedata
 
 # --- 1. ページ基本設定 ---
-st.set_page_config(page_title="Value up 収支", layout="wide")
+st.set_page_config(page_title="Value up 収支", layout="wide", initial_sidebar_state="expanded")
 
-# --- 2. 【核：MutationObserver】ブラウザの翻訳バグを監視・強制上書き ---
-# 記事の教え通り window.top を使い、大元の lang 属性を強制固定します
+# --- 2. 簡易パスワード認証 ---
+# サイドバーの最上部にパスワード入力を配置します
+with st.sidebar:
+    st.markdown('<div class="notranslate" style="font-weight:bold; font-size:1.1rem;">認証</div>', unsafe_allow_html=True)
+    input_password = st.text_input("パスワードを入力", type="password")
+    
+    # StreamlitのSecrets設定からパスワードを取得します
+    # まだ設定していない場合は、一時的に "admin123" などで動くようにしておきます
+    target_password = st.secrets.get("APP_PASSWORD", "admin123")
+
+    if input_password != target_password:
+        if input_password: # 何か入力されたが間違っている場合
+            st.error("パスワードが正しくありません。")
+        else:
+            st.info("閲覧にはパスワードが必要です。")
+        st.stop() # ここでプログラムを停止させ、以下を表示させない
+    else:
+        st.success("認証に成功しました。")
+
+# --- 3. 【核：MutationObserver】ブラウザの翻訳バグを監視・強制上書き ---
 components.html("""
     <script>
         const nukeTranslation = () => {
             const topDoc = window.top.document;
-            
-            // 1. 最上層の lang 属性を強制固定
             if (topDoc.documentElement.lang !== 'ja') {
                 topDoc.documentElement.lang = 'ja';
             }
-            
-            // 2. 翻訳を拒否するメタタグを head にねじ込む
             if (!topDoc.querySelector('meta[name="google"]')) {
                 const meta = topDoc.createElement('meta');
                 meta.name = 'google';
                 meta.content = 'notranslate';
                 topDoc.head.appendChild(meta);
             }
-
-            // 3. サイドバーの「矢印」ボタンの文字化けを物理的に防ぐ
             const sidebarBtn = topDoc.querySelector('button[data-testid="stSidebarCollapseButton"]');
             if (sidebarBtn) {
                 sidebarBtn.classList.add('notranslate');
                 sidebarBtn.setAttribute('translate', 'no');
             }
         };
-
         const observer = new MutationObserver(nukeTranslation);
         observer.observe(window.top.document.body, { childList: true, subtree: true });
         nukeTranslation();
     </script>
 """, height=0)
 
-# --- 3. 【究極：CSSによる画像置換】アイコンの保護とデザイン復元 ---
+# --- 4. 【究極：CSSによる画像置換】アイコン保護とデザイン復元 ---
 st.markdown("""
     <style>
-    /* 全体の背景と基本設定 */
     .stApp { background-color: #f8fafc; }
     font { vertical-align: inherit !important; } 
 
-    /* ★ 矢印アイコンの文字(keyboard_...)を物理的に消し、画像に置き換える */
+    /* 矢印アイコンの文字化けを物理的に消し、画像に置き換える */
     span[data-testid="stSidebarCollapseIcon"] {
         font-size: 0 !important;
         color: transparent !important;
@@ -67,12 +77,12 @@ st.markdown("""
         visibility: visible !important;
     }
 
-    /* タイトルとデザイン復元 */
+    /* タイトル周り */
     .main-header-title { font-size: 2rem; font-weight: 800; color: #0f172a; margin-bottom: 0.2rem; }
     .property-name-display { font-size: 1.2rem; font-weight: 700; color: #64748b; margin-bottom: 2rem; }
     .section-title { font-size: 1.2rem; font-weight: 800; color: #1e293b; border-left: 5px solid #3b82f6; padding-left: 12px; margin-top: 2rem; margin-bottom: 1rem; }
 
-    /* ★ 青色の入力文字（工事費、評価賃料、マイソク、RAM募集） */
+    /* 青色の入力文字 */
     div[data-testid="stNumberInput"]:has(input[aria-label*="工事費"]) input,
     div[data-testid="stNumberInput"]:has(input[aria-label*="VU評価"]) input,
     div[data-testid="stNumberInput"]:has(input[aria-label*="マイソク"]) input,
@@ -81,11 +91,11 @@ st.markdown("""
         font-weight: 800 !important;
     }
 
-    /* 数値入力欄のボタンサイズアップ */
+    /* ボタンサイズアップ */
     div[data-testid="stNumberInput"] button { width: 50px !important; height: 45px !important; }
     div[data-testid="stNumberInput"] button:hover { background-color: #FF00A0 !important; color: white !important; }
 
-    /* 粗利分析カードデザイン */
+    /* 粗利分析カード */
     .metric-card { 
         background-color: #ffffff; border: 1px solid #e2e8f0; 
         padding: 20px; border-radius: 10px; text-align: center; 
@@ -95,17 +105,16 @@ st.markdown("""
     .metric-label { font-size: 0.9rem; color: #64748b; margin-bottom: 8px; font-weight: 600; }
     .metric-value { font-size: 1.6rem; font-weight: 800; color: #0f172a; }
     
-    /* ★ 会社総粗利（青枠ハイライト） */
+    /* 会社総粗利（青枠ハイライト） */
     .total-profit-card { border: 2.5px solid #3b82f6 !important; background-color: #f0f7ff !important; }
     .total-profit-card .metric-label, .total-profit-card .metric-value, .total-profit-card .rate-text { color: #3b82f6 !important; }
 
-    /* 詳細カード */
     .detail-card { background-color: #ffffff; padding: 15px; border-radius: 8px; border: 1px solid #f1f5f9; margin-top: 10px; }
     .detail-val-text { font-weight: 800; color: #1e293b; font-size: 1.1rem; }
     </style>
 """, unsafe_allow_html=True)
 
-# --- 4. ロジック関数 ---
+# --- 5. ロジック関数 ---
 def fetch_kintone_data(ts_id):
     clean_id = unicodedata.normalize('NFKC', str(ts_id)).strip()
     url = f"https://ga-tech.cybozu.com/k/v1/records.json"
@@ -129,8 +138,9 @@ def get_monthly_payment(principal_man, year, rate):
     if r == 0: return p / (n if n != 0 else 1)
     return int(p * (r * (1 + r) ** n) / ((1 + r) ** n - 1))
 
-# --- 5. サイドバー ---
+# --- 6. メイン画面の実行（認証後のみ） ---
 with st.sidebar:
+    st.divider()
     st.markdown('<div class="notranslate" style="font-weight:bold; font-size:1.1rem;">物件検索</div>', unsafe_allow_html=True)
     input_id = st.text_input("物件ID (TS_ID)", value=st.query_params.get("ts_id", ""))
     k_data = fetch_kintone_data(input_id) if input_id else None
@@ -155,13 +165,11 @@ with st.sidebar:
     l_year = st.number_input("ローン年数(年)", value=int(get_val("ローン年数", default=26)), step=1)
     l_rate = st.number_input("金利(%)", value=2.0, step=0.1)
 
-# --- 6. メイン画面 ---
 st.markdown('<div class="main-header-title notranslate">Value up 収支シミュレーション</div>', unsafe_allow_html=True)
 if input_id and k_data:
     p_name = k_data["物件名"]["value"] if "物件名" in k_data else "物件名未設定"
     st.markdown(f'<div class="property-name-display notranslate">物件名：{p_name}</div>', unsafe_allow_html=True)
 
-    # 賃料設定
     st.markdown('<div class="section-title notranslate">賃料設定</div>', unsafe_allow_html=True)
     cols = st.columns(4)
     r_base = cols[0].number_input("仕入れ許容(万)", value=get_val("仕入れ許容賃料", divide=10000), step=0.1)
@@ -169,7 +177,6 @@ if input_id and k_data:
     r_mai = cols[2].number_input("マイソク(万)", value=get_val("マイソク賃料", divide=10000), step=0.1)
     r_ram = cols[3].number_input("RAM募集(万)", value=get_val("RAM募集賃料", divide=10000), step=0.1)
 
-    # 計算
     mng_rep_total = m_fee + r_fee
     price_base = get_sales_price(r_base, mng_rep_total, y_base)
     price_vu = get_sales_price(r_vu, mng_rep_total, y_vu)
@@ -179,17 +186,12 @@ if input_id and k_data:
     rate_a = (prof_a / price_base * 100) if price_base != 0 else 0
     total_r = (total_p / price_vu * 100) if price_vu != 0 else 0
 
-    # 粗利分析
     st.markdown('<div class="section-title notranslate">粗利分析</div>', unsafe_allow_html=True)
     s1, s2, s3 = st.columns(3)
     with s1: st.markdown(f'<div class="metric-card notranslate"><div class="metric-label">仕入粗利</div><div class="metric-value">{prof_a:.1f}万</div><div style="color:#64748b; font-weight:600;">{rate_a:.2f}%</div></div>', unsafe_allow_html=True)
-    
-    # ★ 修正箇所：「込」を削除
     with s2: st.markdown(f'<div class="metric-card notranslate"><div class="metric-label">VU粗利</div><div class="metric-value">{prof_b:.1f}万</div><div style="color:#64748b; font-size:0.75rem;">工事費 {int(c_cost)}万円</div></div>', unsafe_allow_html=True)
-    
     with s3: st.markdown(f'<div class="metric-card total-profit-card notranslate"><div class="metric-label">会社総粗利</div><div class="metric-value">{total_p:.1f}万</div><div class="rate-text" style="font-weight:600;">{total_r:.2f}%</div></div>', unsafe_allow_html=True)
 
-    # 販売・CF詳細
     st.markdown('<div class="section-title notranslate">販売・CF詳細</div>', unsafe_allow_html=True)
     res_cols = st.columns(4)
     patterns = [("仕入れ時", r_base, price_base), ("VU評価時", r_vu, price_vu), ("マイソク", r_mai, price_vu), ("RAM募集", r_ram, price_vu)]
