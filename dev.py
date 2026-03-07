@@ -57,7 +57,7 @@ def update_kintone_record(record_id, payload):
         return resp.status_code == 200
     except: return False
 
-# --- 4. デザインCSS（確定後の黒字化設定を追加） ---
+# --- 4. デザインCSS（確定後の黒字化を含む） ---
 st.markdown("""
     <style>
     .stApp { background-color: #f8fafc; }
@@ -65,16 +65,16 @@ st.markdown("""
     span[data-testid="stSidebarCollapseIcon"] { font-size: 0 !important; color: transparent !important; position: relative !important; display: block !important; width: 24px !important; height: 24px !important; }
     span[data-testid="stSidebarCollapseIcon"]::before { content: ""; position: absolute; top: 0; left: 0; width: 24px; height: 24px; background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="%2364748b"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg>'); background-repeat: no-repeat; background-size: contain; visibility: visible !important; }
     .main-header-title { font-size: 2rem; font-weight: 800; color: #0f172a; margin-bottom: 0.2rem; }
-    .property-name-display { font-size: 1.2rem; font-weight: 700; color: #64748b; margin-bottom: 1rem; }
+    .property-name-display { font-size: 1.4rem; font-weight: 700; color: #1e293b; line-height: 2.2; } /* 物件名の高さを調整 */
     .section-title { font-size: 1.2rem; font-weight: 800; color: #1e293b; border-left: 5px solid #3b82f6; padding-left: 12px; margin-top: 1.5rem; margin-bottom: 1rem; }
     
     /* 入力フォームの基本色（青） */
     div[data-testid="stNumberInput"] input { color: #3b82f6 !important; font-weight: 800 !important; }
     
-    /* ★ 確定（disabled）後の文字色を黒に強制上書き */
+    /* 確定（disabled）後の文字色を黒に強制上書き */
     div[data-testid="stNumberInput"] input:disabled {
         color: #000000 !important;
-        -webkit-text-fill-color: #000000 !important; /* iOS/Safari対策 */
+        -webkit-text-fill-color: #000000 !important;
         opacity: 1 !important;
     }
 
@@ -87,7 +87,7 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# --- 5. データ取得と入力フォーム ---
+# --- 5. サイドバー（データ取得） ---
 with st.sidebar:
     st.markdown('<div class="notranslate" style="font-weight:bold; font-size:1.1rem;">物件検索</div>', unsafe_allow_html=True)
     input_id = st.text_input("物件ID (TS_ID)", value=st.query_params.get("ts_id", ""))
@@ -123,19 +123,21 @@ st.markdown('<div class="main-header-title notranslate">Value up 収支シミュ
 
 if input_id and k_data:
     p_name = k_data["物件名"]["value"] if "物件名" in k_data else "物件名未設定"
-    st.markdown(f'<div class="property-name-display notranslate">物件名：{p_name}</div>', unsafe_allow_html=True)
-
+    
+    # ★ポイント1: 変数の定義を「ボタン」より先に持ってくる（NameError回避）
     st.markdown('<div class="section-title notranslate">賃料設定</div>', unsafe_allow_html=True)
-    c = st.columns(4)
-    r_base = c[0].number_input("仕入れ許容(万)", value=get_val("仕入れ許容賃料", divide=10000), step=0.1, disabled=is_fixed)
-    r_vu = c[1].number_input("VU評価(万)", value=get_val("VU評価賃料", divide=10000), step=0.1, disabled=is_fixed)
-    r_mai = c[2].number_input("マイソク(万)", value=get_val("マイソク賃料", divide=10000), step=0.1, disabled=is_fixed)
-    r_ram = c[3].number_input("RAM募集(万)", value=get_val("RAM募集賃料", divide=10000), step=0.1, disabled=is_fixed)
+    rent_cols = st.columns(4)
+    r_base = rent_cols[0].number_input("仕入れ許容(万)", value=get_val("仕入れ許容賃料", divide=10000), step=0.1, disabled=is_fixed)
+    r_vu = rent_cols[1].number_input("VU評価(万)", value=get_val("VU評価賃料", divide=10000), step=0.1, disabled=is_fixed)
+    r_mai = rent_cols[2].number_input("マイソク(万)", value=get_val("マイソク賃料", divide=10000), step=0.1, disabled=is_fixed)
+    r_ram = rent_cols[3].number_input("RAM募集(万)", value=get_val("RAM募集賃料", divide=10000), step=0.1, disabled=is_fixed)
 
-    # --- 右上：確定ボタンセクション ---
+    # ★ポイント2: 物件名とボタンを横並びにする
     st.divider()
-    btn_col1, btn_col2 = st.columns([7, 3])
-    with btn_col2:
+    title_col, action_col = st.columns([7, 3])
+    with title_col:
+        st.markdown(f'<div class="property-name-display notranslate">物件名：{p_name}</div>', unsafe_allow_html=True)
+    with action_col:
         if is_fixed:
             st.button("✅ 条件確定済み", disabled=True, use_container_width=True)
         else:
@@ -153,12 +155,12 @@ if input_id and k_data:
                     "VU可否": {"value": "パス準備"}
                 }
                 if update_kintone_record(k_data["$id"]["value"], payload):
-                    st.success("保存完了！条件を確定しました。")
+                    st.success("保存完了！")
                     st.rerun()
                 else:
-                    st.error("保存失敗。kintoneの設定を確認してください。")
+                    st.error("保存失敗。")
 
-    # --- 計算ロジック ---
+    # --- 計算ロジックと結果表示 ---
     mng_total = m_fee + r_fee
     p_base = math.floor((((r_base - (mng_total/10000))*12)/(y_base/100))/10)*10 if y_base else 0
     p_vu = math.floor((((r_vu - (mng_total/10000))*12)/(y_vu/100))/10)*10 if y_vu else 0
