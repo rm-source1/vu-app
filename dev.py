@@ -80,13 +80,12 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# --- 5. 物件データ読み込み・確定判定 ---
+# --- 5. データ取得と入力フォーム ---
 with st.sidebar:
     st.markdown('<div class="notranslate" style="font-weight:bold; font-size:1.1rem;">物件検索</div>', unsafe_allow_html=True)
     input_id = st.text_input("物件ID (TS_ID)", value=st.query_params.get("ts_id", ""))
     k_data = fetch_kintone_data(input_id) if input_id else None
 
-    # 条件確定の判定
     is_fixed = False
     if k_data and "条件確定" in k_data:
         is_fixed = "確定済" in k_data["条件確定"].get("value", [])
@@ -112,22 +111,29 @@ with st.sidebar:
     l_year = st.number_input("ローン年数(年)", value=int(get_val("ローン年数", default=26)), step=1, disabled=is_fixed)
     l_rate = st.number_input("金利(%)", value=get_val("金利", default=2.0), step=0.1, disabled=is_fixed)
 
-# --- 6. 賃料設定とメイン画面の計算 ---
+# --- 6. メイン表示エリア ---
 st.markdown('<div class="main-header-title notranslate">Value up 収支シミュレーション</div>', unsafe_allow_html=True)
 
 if input_id and k_data:
     p_name = k_data["物件名"]["value"] if "物件名" in k_data else "物件名未設定"
-    
-    # --- 右上：確定ボタンセクション ---
+    st.markdown(f'<div class="property-name-display notranslate">物件名：{p_name}</div>', unsafe_allow_html=True)
+
+    # ★ 賃料入力フォームを先に配置（これで値が確定する）
+    st.markdown('<div class="section-title notranslate">賃料設定</div>', unsafe_allow_html=True)
+    c = st.columns(4)
+    r_base = c[0].number_input("仕入れ許容(万)", value=get_val("仕入れ許容賃料", divide=10000), step=0.1, disabled=is_fixed)
+    r_vu = c[1].number_input("VU評価(万)", value=get_val("VU評価賃料", divide=10000), step=0.1, disabled=is_fixed)
+    r_mai = c[2].number_input("マイソク(万)", value=get_val("マイソク賃料", divide=10000), step=0.1, disabled=is_fixed)
+    r_ram = c[3].number_input("RAM募集(万)", value=get_val("RAM募集賃料", divide=10000), step=0.1, disabled=is_fixed)
+
+    # --- 右上：確定ボタン（入力フォームの後に配置することで変数を認識させる） ---
+    st.divider()
     btn_col1, btn_col2 = st.columns([7, 3])
-    with btn_col1:
-        st.markdown(f'<div class="property-name-display notranslate">物件名：{p_name}</div>', unsafe_allow_html=True)
     with btn_col2:
         if is_fixed:
             st.button("✅ 条件確定済み", disabled=True, use_container_width=True)
         else:
             if st.button("🚀 条件を確定して保存", type="primary", use_container_width=True):
-                # kintone書き戻し用データ
                 payload = {
                     "VU評価賃料": {"value": r_vu * 10000},
                     "マイソク賃料": {"value": r_mai * 10000},
@@ -146,14 +152,7 @@ if input_id and k_data:
                 else:
                     st.error("保存失敗。kintoneの設定を確認してください。")
 
-    st.markdown('<div class="section-title notranslate">賃料設定</div>', unsafe_allow_html=True)
-    c = st.columns(4)
-    r_base = c[0].number_input("仕入れ許容(万)", value=get_val("仕入れ許容賃料", divide=10000), step=0.1, disabled=is_fixed)
-    r_vu = c[1].number_input("VU評価(万)", value=get_val("VU評価賃料", divide=10000), step=0.1, disabled=is_fixed)
-    r_mai = c[2].number_input("マイソク(万)", value=get_val("マイソク賃料", divide=10000), step=0.1, disabled=is_fixed)
-    r_ram = c[3].number_input("RAM募集(万)", value=get_val("RAM募集賃料", divide=10000), step=0.1, disabled=is_fixed)
-
-    # ロジック計算
+    # --- 計算ロジック ---
     mng_total = m_fee + r_fee
     p_base = math.floor((((r_base - (mng_total/10000))*12)/(y_base/100))/10)*10 if y_base else 0
     p_vu = math.floor((((r_vu - (mng_total/10000))*12)/(y_vu/100))/10)*10 if y_vu else 0
