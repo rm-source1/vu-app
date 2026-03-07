@@ -57,7 +57,7 @@ def update_kintone_record(record_id, payload):
         return resp.status_code == 200
     except: return False
 
-# --- 4. デザインCSS ---
+# --- 4. デザインCSS（特定項目のみ青色化） ---
 st.markdown("""
     <style>
     .stApp { background-color: #f8fafc; }
@@ -68,8 +68,21 @@ st.markdown("""
     .property-name-display { font-size: 1.4rem; font-weight: 700; color: #1e293b; line-height: 2.2; }
     .section-title { font-size: 1.2rem; font-weight: 800; color: #1e293b; border-left: 5px solid #3b82f6; padding-left: 12px; margin-top: 1.5rem; margin-bottom: 1rem; }
     
-    div[data-testid="stNumberInput"] input { color: #3b82f6 !important; font-weight: 800 !important; }
-    div[data-testid="stNumberInput"] input:disabled { color: #000000 !important; -webkit-text-fill-color: #000000 !important; opacity: 1 !important; }
+    /* 特定の入力フォーム（工事費・各賃料）のみ青色強調 */
+    div[data-testid="stNumberInput"]:has(input[aria-label*="工事費"]) input,
+    div[data-testid="stNumberInput"]:has(input[aria-label*="VU評価"]) input,
+    div[data-testid="stNumberInput"]:has(input[aria-label*="マイソク"]) input,
+    div[data-testid="stNumberInput"]:has(input[aria-label*="RAM募集"]) input {
+        color: #3b82f6 !important;
+        font-weight: 800 !important;
+    }
+    
+    /* 確定（disabled）後の文字色をすべて黒に強制上書き */
+    div[data-testid="stNumberInput"] input:disabled {
+        color: #000000 !important;
+        -webkit-text-fill-color: #000000 !important;
+        opacity: 1 !important;
+    }
 
     .metric-card { background-color: #ffffff; border: 1px solid #e2e8f0; padding: 20px; border-radius: 10px; text-align: center; height: 140px; display: flex; flex-direction: column; justify-content: center; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
     .metric-value { font-size: 1.6rem; font-weight: 800; color: #0f172a; }
@@ -117,10 +130,10 @@ st.markdown('<div class="main-header-title notranslate">Value up 収支シミュ
 if input_id and k_data:
     p_name = k_data["物件名"]["value"] if "物件名" in k_data else "物件名未設定"
     
-    # ★【新手法】一番上に場所だけ確保する（プレースホルダ）
+    # 【プレースホルダ】最上部に場所を確保
     header_placeholder = st.empty()
     
-    # 賃料設定セクション（ここで r_vu などの変数が確定する）
+    # 賃料設定（変数を先に確定させる）
     st.markdown('<div class="section-title notranslate">賃料設定</div>', unsafe_allow_html=True)
     rent_cols = st.columns(4)
     r_base = rent_cols[0].number_input("仕入れ許容(万)", value=get_val("仕入れ許容賃料", divide=10000), step=0.1, disabled=is_fixed)
@@ -128,9 +141,9 @@ if input_id and k_data:
     r_mai = rent_cols[2].number_input("マイソク(万)", value=get_val("マイソク賃料", divide=10000), step=0.1, disabled=is_fixed)
     r_ram = rent_cols[3].number_input("RAM募集(万)", value=get_val("RAM募集賃料", divide=10000), step=0.1, disabled=is_fixed)
 
-    # ★【新手法】確保しておいた場所（上部）に物件名とボタンを書き込む
+    # 確保した場所（最上部）に物件名とボタンを表示
     with header_placeholder.container():
-        st.write("") # スペース調整
+        st.write("") 
         t_col, a_col = st.columns([7, 3])
         with t_col:
             st.markdown(f'<div class="property-name-display notranslate">物件名：{p_name}</div>', unsafe_allow_html=True)
