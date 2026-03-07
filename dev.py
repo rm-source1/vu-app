@@ -57,7 +57,7 @@ def update_kintone_record(record_id, payload):
         return resp.status_code == 200
     except: return False
 
-# --- 4. デザインCSS ---
+# --- 4. デザインCSS（確定後の黒字化設定を追加） ---
 st.markdown("""
     <style>
     .stApp { background-color: #f8fafc; }
@@ -67,10 +67,17 @@ st.markdown("""
     .main-header-title { font-size: 2rem; font-weight: 800; color: #0f172a; margin-bottom: 0.2rem; }
     .property-name-display { font-size: 1.2rem; font-weight: 700; color: #64748b; margin-bottom: 1rem; }
     .section-title { font-size: 1.2rem; font-weight: 800; color: #1e293b; border-left: 5px solid #3b82f6; padding-left: 12px; margin-top: 1.5rem; margin-bottom: 1rem; }
-    div[data-testid="stNumberInput"]:has(input[aria-label*="工事費"]) input,
-    div[data-testid="stNumberInput"]:has(input[aria-label*="VU評価"]) input,
-    div[data-testid="stNumberInput"]:has(input[aria-label*="マイソク"]) input,
-    div[data-testid="stNumberInput"]:has(input[aria-label*="RAM募集"]) input { color: #3b82f6 !important; font-weight: 800 !important; }
+    
+    /* 入力フォームの基本色（青） */
+    div[data-testid="stNumberInput"] input { color: #3b82f6 !important; font-weight: 800 !important; }
+    
+    /* ★ 確定（disabled）後の文字色を黒に強制上書き */
+    div[data-testid="stNumberInput"] input:disabled {
+        color: #000000 !important;
+        -webkit-text-fill-color: #000000 !important; /* iOS/Safari対策 */
+        opacity: 1 !important;
+    }
+
     .metric-card { background-color: #ffffff; border: 1px solid #e2e8f0; padding: 20px; border-radius: 10px; text-align: center; height: 140px; display: flex; flex-direction: column; justify-content: center; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
     .metric-value { font-size: 1.6rem; font-weight: 800; color: #0f172a; }
     .total-profit-card { border: 2.5px solid #3b82f6 !important; background-color: #f0f7ff !important; }
@@ -86,7 +93,6 @@ with st.sidebar:
     input_id = st.text_input("物件ID (TS_ID)", value=st.query_params.get("ts_id", ""))
     k_data = fetch_kintone_data(input_id) if input_id else None
 
-    # 条件確定の判定（「確認済」に修正）
     is_fixed = False
     if k_data and "条件確定" in k_data:
         is_fixed = "確認済" in k_data["条件確定"].get("value", [])
@@ -134,7 +140,6 @@ if input_id and k_data:
             st.button("✅ 条件確定済み", disabled=True, use_container_width=True)
         else:
             if st.button("🚀 条件を確定して保存", type="primary", use_container_width=True):
-                # ★ ここを「確認済」に修正
                 payload = {
                     "VU評価賃料": {"value": r_vu * 10000},
                     "マイソク賃料": {"value": r_mai * 10000},
