@@ -86,9 +86,10 @@ with st.sidebar:
     input_id = st.text_input("物件ID (TS_ID)", value=st.query_params.get("ts_id", ""))
     k_data = fetch_kintone_data(input_id) if input_id else None
 
+    # 条件確定の判定（「確認済」に修正）
     is_fixed = False
     if k_data and "条件確定" in k_data:
-        is_fixed = "確定済" in k_data["条件確定"].get("value", [])
+        is_fixed = "確認済" in k_data["条件確定"].get("value", [])
 
     def get_val(field, default=0.0, divide=1):
         if k_data and field in k_data:
@@ -118,7 +119,6 @@ if input_id and k_data:
     p_name = k_data["物件名"]["value"] if "物件名" in k_data else "物件名未設定"
     st.markdown(f'<div class="property-name-display notranslate">物件名：{p_name}</div>', unsafe_allow_html=True)
 
-    # ★ 賃料入力フォームを先に配置（これで値が確定する）
     st.markdown('<div class="section-title notranslate">賃料設定</div>', unsafe_allow_html=True)
     c = st.columns(4)
     r_base = c[0].number_input("仕入れ許容(万)", value=get_val("仕入れ許容賃料", divide=10000), step=0.1, disabled=is_fixed)
@@ -126,7 +126,7 @@ if input_id and k_data:
     r_mai = c[2].number_input("マイソク(万)", value=get_val("マイソク賃料", divide=10000), step=0.1, disabled=is_fixed)
     r_ram = c[3].number_input("RAM募集(万)", value=get_val("RAM募集賃料", divide=10000), step=0.1, disabled=is_fixed)
 
-    # --- 右上：確定ボタン（入力フォームの後に配置することで変数を認識させる） ---
+    # --- 右上：確定ボタンセクション ---
     st.divider()
     btn_col1, btn_col2 = st.columns([7, 3])
     with btn_col2:
@@ -134,6 +134,7 @@ if input_id and k_data:
             st.button("✅ 条件確定済み", disabled=True, use_container_width=True)
         else:
             if st.button("🚀 条件を確定して保存", type="primary", use_container_width=True):
+                # ★ ここを「確認済」に修正
                 payload = {
                     "VU評価賃料": {"value": r_vu * 10000},
                     "マイソク賃料": {"value": r_mai * 10000},
@@ -143,7 +144,7 @@ if input_id and k_data:
                     "利回り_価格設定": {"value": y_vu},
                     "ローン年数": {"value": l_year},
                     "金利": {"value": l_rate},
-                    "条件確定": {"value": ["確定済"]},
+                    "条件確定": {"value": ["確認済"]},
                     "VU可否": {"value": "パス準備"}
                 }
                 if update_kintone_record(k_data["$id"]["value"], payload):
