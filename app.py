@@ -7,7 +7,7 @@ import unicodedata
 # --- 1. ページ基本設定 ---
 st.set_page_config(page_title="Value up 収支", layout="wide", initial_sidebar_state="expanded")
 
-# --- 2. 認証ロジック（クリーン版） ---
+# --- 2. 認証ロジック ---
 if "authenticated" not in st.session_state:
     st.session_state.authenticated = False
 
@@ -19,11 +19,9 @@ def normalize_code(s):
 target_password = normalize_code(st.secrets.get("APP_PASSWORD", "admin123"))
 url_code = normalize_code(st.query_params.get("code", ""))
 
-# 自動ログイン判定
 if url_code == target_password and target_password != "":
     st.session_state.authenticated = True
 
-# 未認証時のUI
 if not st.session_state.authenticated:
     with st.sidebar:
         st.markdown('<div class="notranslate" style="font-weight:bold; font-size:1.1rem;">アクセス認証</div>', unsafe_allow_html=True)
@@ -31,107 +29,80 @@ if not st.session_state.authenticated:
         if normalize_code(input_password) == target_password:
             st.session_state.authenticated = True
             st.rerun()
-        elif input_password:
-            st.error("コードが正しくありません")
-        st.info("このアプリの閲覧にはアクセスコードが必要です。")
     st.stop()
 
-# --- 3. 【核】翻訳バグ・アイコン文字化け対策 ---
-components.html("""
-    <script>
-        const nukeTranslation = () => {
-            const topDoc = window.top.document;
-            if (topDoc.documentElement.lang !== 'ja') { topDoc.documentElement.lang = 'ja'; }
-            if (!topDoc.querySelector('meta[name="google"]')) {
-                const meta = topDoc.createElement('meta');
-                meta.name = 'google'; meta.content = 'notranslate';
-                topDoc.head.appendChild(meta);
-            }
-            const sidebarBtn = topDoc.querySelector('button[data-testid="stSidebarCollapseButton"]');
-            if (sidebarBtn) {
-                sidebarBtn.classList.add('notranslate');
-                sidebarBtn.setAttribute('translate', 'no');
-            }
-        };
-        const observer = new MutationObserver(nukeTranslation);
-        observer.observe(window.top.document.body, { childList: true, subtree: true });
-        nukeTranslation();
-    </script>
-""", height=0)
-
-# --- 4. デザインCSS ---
-st.markdown("""
-    <style>
-    .stApp { background-color: #f8fafc; }
-    font { vertical-align: inherit !important; } 
-    /* 矢印アイコンの保護 */
-    span[data-testid="stSidebarCollapseIcon"] {
-        font-size: 0 !important; color: transparent !important;
-        position: relative !important; display: block !important;
-        width: 24px !important; height: 24px !important;
-    }
-    span[data-testid="stSidebarCollapseIcon"]::before {
-        content: ""; position: absolute; top: 0; left: 0; width: 24px; height: 24px;
-        background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="%2364748b"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg>');
-        background-repeat: no-repeat; background-size: contain; visibility: visible !important;
-    }
-    .main-header-title { font-size: 2rem; font-weight: 800; color: #0f172a; margin-bottom: 0.2rem; }
-    .property-name-display { font-size: 1.2rem; font-weight: 700; color: #64748b; margin-bottom: 2rem; }
-    .section-title { font-size: 1.2rem; font-weight: 800; color: #1e293b; border-left: 5px solid #3b82f6; padding-left: 12px; margin-top: 2rem; margin-bottom: 1rem; }
-    /* 数字の青色強調 */
-    div[data-testid="stNumberInput"]:has(input[aria-label*="工事費"]) input,
-    div[data-testid="stNumberInput"]:has(input[aria-label*="VU評価"]) input,
-    div[data-testid="stNumberInput"]:has(input[aria-label*="マイソク"]) input,
-    div[data-testid="stNumberInput"]:has(input[aria-label*="RAM募集"]) input {
-        color: #3b82f6 !important; font-weight: 800 !important;
-    }
-    div[data-testid="stNumberInput"] button { width: 50px !important; height: 45px !important; }
-    div[data-testid="stNumberInput"] button:hover { background-color: #FF00A0 !important; color: white !important; }
-    /* カードデザイン */
-    .metric-card { 
-        background-color: #ffffff; border: 1px solid #e2e8f0; padding: 20px; 
-        border-radius: 10px; text-align: center; height: 140px; 
-        display: flex; flex-direction: column; justify-content: center;
-        box-shadow: 0 1px 3px rgba(0,0,0,0.05);
-    }
-    .metric-value { font-size: 1.6rem; font-weight: 800; color: #0f172a; }
-    .total-profit-card { border: 2.5px solid #3b82f6 !important; background-color: #f0f7ff !important; }
-    .total-profit-card .metric-label, .total-profit-card .metric-value, .total-profit-card .rate-text { color: #3b82f6 !important; }
-    .detail-card { background-color: #ffffff; padding: 15px; border-radius: 8px; border: 1px solid #f1f5f9; margin-top: 10px; }
-    .detail-item { font-size: 0.95rem; margin-bottom: 2px; color: #64748b; }
-    .detail-val-text { font-weight: 800; color: #1e293b; font-size: 1.1rem; }
-    </style>
-""", unsafe_allow_html=True)
-
-# --- 5. ロジック関数 ---
+# --- 3. kintoneデータ連携関数 ---
 def fetch_kintone_data(ts_id):
     clean_id = normalize_code(ts_id)
     url = f"https://ga-tech.cybozu.com/k/v1/records.json"
     headers = {"X-Cybozu-API-Token": st.secrets["KINTONE_API_TOKEN"]}
     query = f'TS_ID = "{clean_id}"'
     if clean_id.isdigit(): query += f' or TS_ID = {clean_id}'
-    params = {"app": "479", "query": query}
+    params = {"app": "479", "query": f"{query} order by $id desc limit 1"}
     try:
         resp = requests.get(url, headers=headers, params=params)
         data = resp.json()
         return data["records"][0] if data.get("records") else None
     except: return None
 
-def get_sales_price(rent_man, mng_rep_total, yield_percent):
-    net_rent_monthly = rent_man - (mng_rep_total / 10000)
-    if not yield_percent: return 0
-    return math.floor(((net_rent_monthly * 12) / (yield_percent / 100)) / 10) * 10
+def update_kintone_record(record_id, payload):
+    url = f"https://ga-tech.cybozu.com/k/v1/record.json"
+    headers = {
+        "X-Cybozu-API-Token": st.secrets["KINTONE_API_TOKEN"],
+        "Content-Type": "application/json"
+    }
+    data = {"app": "479", "id": record_id, "record": payload}
+    try:
+        resp = requests.put(url, json=data, headers=headers)
+        return resp.status_code == 200
+    except: return False
 
-def get_monthly_payment(principal_man, year, rate):
-    p, r, n = principal_man * 10000, (rate / 100) / 12, year * 12
-    if r == 0: return p / (n if n != 0 else 1)
-    return int(p * (r * (1 + r) ** n) / ((1 + r) ** n - 1))
+# --- 4. デザインCSS（特定項目のみ青色化） ---
+st.markdown("""
+    <style>
+    .stApp { background-color: #f8fafc; }
+    font { vertical-align: inherit !important; } 
+    span[data-testid="stSidebarCollapseIcon"] { font-size: 0 !important; color: transparent !important; position: relative !important; display: block !important; width: 24px !important; height: 24px !important; }
+    span[data-testid="stSidebarCollapseIcon"]::before { content: ""; position: absolute; top: 0; left: 0; width: 24px; height: 24px; background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="%2364748b"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg>'); background-repeat: no-repeat; background-size: contain; visibility: visible !important; }
+    .main-header-title { font-size: 2rem; font-weight: 800; color: #0f172a; margin-bottom: 0.2rem; }
+    .property-name-display { font-size: 1.4rem; font-weight: 700; color: #1e293b; line-height: 2.2; }
+    .section-title { font-size: 1.2rem; font-weight: 800; color: #1e293b; border-left: 5px solid #3b82f6; padding-left: 12px; margin-top: 1.5rem; margin-bottom: 1rem; }
+    
+    /* 特定の入力フォーム（工事費・各賃料）のみ青色強調 */
+    div[data-testid="stNumberInput"]:has(input[aria-label*="工事費"]) input,
+    div[data-testid="stNumberInput"]:has(input[aria-label*="VU評価"]) input,
+    div[data-testid="stNumberInput"]:has(input[aria-label*="マイソク"]) input,
+    div[data-testid="stNumberInput"]:has(input[aria-label*="RAM募集"]) input {
+        color: #3b82f6 !important;
+        font-weight: 800 !important;
+    }
+    
+    /* 確定（disabled）後の文字色をすべて黒に強制上書き */
+    div[data-testid="stNumberInput"] input:disabled {
+        color: #000000 !important;
+        -webkit-text-fill-color: #000000 !important;
+        opacity: 1 !important;
+    }
 
+    .metric-card { background-color: #ffffff; border: 1px solid #e2e8f0; padding: 20px; border-radius: 10px; text-align: center; height: 140px; display: flex; flex-direction: column; justify-content: center; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
+    .metric-value { font-size: 1.6rem; font-weight: 800; color: #0f172a; }
+    .total-profit-card { border: 2.5px solid #3b82f6 !important; background-color: #f0f7ff !important; }
+    .total-profit-card .metric-label, .total-profit-card .metric-value, .total-profit-card .rate-text { color: #3b82f6 !important; }
+    .detail-card { background-color: #ffffff; padding: 15px; border-radius: 8px; border: 1px solid #f1f5f9; margin-top: 10px; }
+    .detail-val-text { font-weight: 800; color: #1e293b; font-size: 1.1rem; }
+    </style>
+""", unsafe_allow_html=True)
+
+# --- 5. サイドバー（データ取得） ---
 with st.sidebar:
     st.markdown('<div class="notranslate" style="font-weight:bold; font-size:1.1rem;">物件検索</div>', unsafe_allow_html=True)
     input_id = st.text_input("物件ID (TS_ID)", value=st.query_params.get("ts_id", ""))
     k_data = fetch_kintone_data(input_id) if input_id else None
-    
+
+    is_fixed = False
+    if k_data and "条件確定" in k_data:
+        is_fixed = "確認済" in k_data["条件確定"].get("value", [])
+
     def get_val(field, default=0.0, divide=1):
         if k_data and field in k_data:
             val = k_data[field].get("value")
@@ -141,58 +112,85 @@ with st.sidebar:
         return default
 
     st.divider()
-    st.markdown('<div class="notranslate" style="font-weight:bold; font-size:1.1rem;">基本データ</div>', unsafe_allow_html=True)
-    p_price = st.number_input("仕入価格(万)", value=int(get_val("仕入価格")), step=10)
-    m_fee = st.number_input("管理費(円)", value=int(get_val("管理費")), step=100)
-    r_fee = st.number_input("修繕積立金(円)", value=int(get_val("修繕積立金")), step=100)
-    c_cost = st.number_input("工事費想定(万)", value=int(get_val("工事費想定")), step=10)
+    lock_label = " (🔒 確定済)" if is_fixed else ""
+    st.markdown(f'<div class="notranslate" style="font-weight:bold; font-size:1.1rem;">基本データ{lock_label}</div>', unsafe_allow_html=True)
+    p_price = st.number_input("仕入価格(万)", value=int(get_val("仕入価格")), step=10, disabled=is_fixed)
+    m_fee = st.number_input("管理費(円)", value=int(get_val("管理費")), step=100, disabled=is_fixed)
+    r_fee = st.number_input("修繕積立金(円)", value=int(get_val("修繕積立金")), step=100, disabled=is_fixed)
+    c_cost = st.number_input("工事費想定(万)", value=int(get_val("工事費想定")), step=10, disabled=is_fixed)
     st.divider()
-    y_base = st.number_input("利回り_仕入時(%)", value=get_val("利回り_仕入時"), step=0.1)
-    y_vu = st.number_input("利回り_価格設定(%)", value=get_val("利回り_価格設定"), step=0.1)
-    l_year = st.number_input("ローン年数(年)", value=int(get_val("ローン年数", default=26)), step=1)
-    l_rate = st.number_input("金利(%)", value=2.0, step=0.1)
+    y_base = st.number_input("利回り_仕入時(%)", value=get_val("利回り_仕入時"), step=0.1, disabled=is_fixed)
+    y_vu = st.number_input("利回り_価格設定(%)", value=get_val("利回り_価格設定"), step=0.1, disabled=is_fixed)
+    l_year = st.number_input("ローン年数(年)", value=int(get_val("ローン年数", default=26)), step=1, disabled=is_fixed)
+    l_rate = st.number_input("金利(%)", value=get_val("金利", default=2.0), step=0.1, disabled=is_fixed)
 
-# --- 6. メイン画面表示 ---
+# --- 6. メイン表示エリア ---
 st.markdown('<div class="main-header-title notranslate">Value up 収支シミュレーション</div>', unsafe_allow_html=True)
+
 if input_id and k_data:
     p_name = k_data["物件名"]["value"] if "物件名" in k_data else "物件名未設定"
-    st.markdown(f'<div class="property-name-display notranslate">物件名：{p_name}</div>', unsafe_allow_html=True)
-
+    
+    # 【プレースホルダ】最上部に場所を確保
+    header_placeholder = st.empty()
+    
+    # 賃料設定（変数を先に確定させる）
     st.markdown('<div class="section-title notranslate">賃料設定</div>', unsafe_allow_html=True)
-    cols = st.columns(4)
-    r_base = cols[0].number_input("仕入れ許容(万)", value=get_val("仕入れ許容賃料", divide=10000), step=0.1)
-    r_vu = cols[1].number_input("VU評価(万)", value=get_val("VU評価賃料", divide=10000), step=0.1)
-    r_mai = cols[2].number_input("マイソク(万)", value=get_val("マイソク賃料", divide=10000), step=0.1)
-    r_ram = cols[3].number_input("RAM募集(万)", value=get_val("RAM募集賃料", divide=10000), step=0.1)
+    rent_cols = st.columns(4)
+    r_base = rent_cols[0].number_input("仕入れ許容(万)", value=get_val("仕入れ許容賃料", divide=10000), step=0.1, disabled=is_fixed)
+    r_vu = rent_cols[1].number_input("VU評価(万)", value=get_val("VU評価賃料", divide=10000), step=0.1, disabled=is_fixed)
+    r_mai = rent_cols[2].number_input("マイソク(万)", value=get_val("マイソク賃料", divide=10000), step=0.1, disabled=is_fixed)
+    r_ram = rent_cols[3].number_input("RAM募集(万)", value=get_val("RAM募集賃料", divide=10000), step=0.1, disabled=is_fixed)
 
-    mng_rep_total = m_fee + r_fee
-    price_base = get_sales_price(r_base, mng_rep_total, y_base)
-    price_vu = get_sales_price(r_vu, mng_rep_total, y_vu)
-    prof_a = price_base - p_price - (r_base * 3)
-    prof_b = price_vu - price_base - c_cost
+    # 確保した場所（最上部）に物件名とボタンを表示
+    with header_placeholder.container():
+        st.write("") 
+        t_col, a_col = st.columns([7, 3])
+        with t_col:
+            st.markdown(f'<div class="property-name-display notranslate">物件名：{p_name}</div>', unsafe_allow_html=True)
+        with a_col:
+            if is_fixed:
+                st.button("✅ 条件確定済み", disabled=True, use_container_width=True, key="fixed_btn")
+            else:
+                if st.button("🚀 条件を確定して保存", type="primary", use_container_width=True, key="active_btn"):
+                    payload = {
+                        "VU評価賃料": {"value": r_vu * 10000},
+                        "マイソク賃料": {"value": r_mai * 10000},
+                        "RAM募集賃料": {"value": r_ram * 10000},
+                        "工事費想定": {"value": c_cost},
+                        "利回り_仕入時": {"value": y_base},
+                        "利回り_価格設定": {"value": y_vu},
+                        "ローン年数": {"value": l_year},
+                        "金利": {"value": l_rate},
+                        "条件確定": {"value": ["確認済"]},
+                        "VU可否": {"value": "パス準備"}
+                    }
+                    if update_kintone_record(k_data["$id"]["value"], payload):
+                        st.success("保存完了！")
+                        st.rerun()
+                    else:
+                        st.error("保存失敗。")
+
+    # --- 計算ロジックと結果表示 ---
+    mng_total = m_fee + r_fee
+    p_base = math.floor((((r_base - (mng_total/10000))*12)/(y_base/100))/10)*10 if y_base else 0
+    p_vu = math.floor((((r_vu - (mng_total/10000))*12)/(y_vu/100))/10)*10 if y_vu else 0
+    prof_a = p_base - p_price - (r_base * 3)
+    prof_b = p_vu - p_base - c_cost
     total_p = prof_a + prof_b
-    rate_a = (prof_a / price_base * 100) if price_base != 0 else 0
-    total_r = (total_p / price_vu * 100) if price_vu != 0 else 0
+    total_r = (total_p / p_vu * 100) if p_vu else 0
 
     st.markdown('<div class="section-title notranslate">粗利分析</div>', unsafe_allow_html=True)
     s1, s2, s3 = st.columns(3)
-    with s1: st.markdown(f'<div class="metric-card notranslate"><div class="metric-label">仕入粗利</div><div class="metric-value">{prof_a:.1f}万</div><div style="color:#64748b; font-weight:600;">{rate_a:.2f}%</div></div>', unsafe_allow_html=True)
-    with s2: st.markdown(f'<div class="metric-card notranslate"><div class="metric-label">VU粗利</div><div class="metric-value">{prof_b:.1f}万</div><div style="color:#64748b; font-size:0.75rem;">工事費 {int(c_cost)}万円</div></div>', unsafe_allow_html=True)
-    with s3: st.markdown(f'<div class="metric-card total-profit-card notranslate"><div class="metric-label">会社総粗利</div><div class="metric-value">{total_p:.1f}万</div><div class="rate-text" style="font-weight:600;">{total_r:.2f}%</div></div>', unsafe_allow_html=True)
+    with s1: st.markdown(f'<div class="metric-card"><div class="metric-label">仕入粗利</div><div class="metric-value">{prof_a:.1f}万</div></div>', unsafe_allow_html=True)
+    with s2: st.markdown(f'<div class="metric-card"><div class="metric-label">VU粗利</div><div class="metric-value">{prof_b:.1f}万</div><div style="font-size:0.75rem;">工事費 {int(c_cost)}万</div></div>', unsafe_allow_html=True)
+    with s3: st.markdown(f'<div class="metric-card total-profit-card"><div class="metric-label">会社総粗利</div><div class="metric-value">{total_p:.1f}万</div><div class="rate-text" style="font-weight:600; color:#3b82f6;">{total_r:.2f}%</div></div>', unsafe_allow_html=True)
 
     st.markdown('<div class="section-title notranslate">販売・CF詳細</div>', unsafe_allow_html=True)
-    res_cols = st.columns(4)
-    patterns = [("仕入れ時", r_base, price_base), ("VU評価時", r_vu, price_vu), ("マイソク", r_mai, price_vu), ("RAM募集", r_ram, price_vu)]
-    for i, (name, rent, s_price) in enumerate(patterns):
-        net_rent_monthly = (rent * 10000) - mng_rep_total
-        pay = get_monthly_payment(s_price, l_year, l_rate)
-        current_yield = (net_rent_monthly * 12) / (s_price * 10000) * 100 if s_price > 0 else 0
-        with res_cols[i]:
-            st.markdown(f'''
-                <div class="detail-card notranslate">
-                    <div style="font-size:0.75rem;color:#94a3b8;font-weight:800;margin-bottom:6px;">{name}</div>
-                    <div class="detail-item">販売: <span class="detail-val-text">{int(s_price):,}</span>万</div>
-                    <div class="detail-item">利回り: <span class="detail-val-text">{current_yield:.2f}</span>%</div>
-                    <div class="detail-item">CF: <span class="detail-val-text">{int(net_rent_monthly - pay):,}</span>円/月</div>
-                </div>
-            ''', unsafe_allow_html=True)
+    res = st.columns(4)
+    patterns = [("仕入れ時", r_base, p_base), ("VU評価時", r_vu, p_vu), ("マイソク", r_mai, p_vu), ("RAM募集", r_ram, p_vu)]
+    for i, (name, rent, sales) in enumerate(patterns):
+        net_rent = (rent * 10000) - mng_total
+        pay = int((sales*10000)*((l_rate/100/12)*(1+l_rate/100/12)**(l_year*12))/((1+l_rate/100/12)**(l_year*12)-1)) if l_rate and l_year else 0
+        yld = (net_rent * 12) / (sales * 10000) * 100 if sales else 0
+        with res[i]:
+            st.markdown(f'<div class="detail-card"><b>{name}</b><br>販売: {int(sales):,}万<br>利回り: {yld:.2f}%<br>CF: {int(net_rent - pay):,}円/月</div>', unsafe_allow_html=True)
