@@ -57,7 +57,7 @@ def update_kintone_record(record_id, payload):
         return resp.status_code == 200
     except: return False
 
-# --- 4. デザインCSS（特定項目のみ青色化） ---
+# --- 4. デザインCSS ---
 st.markdown("""
     <style>
     .stApp { background-color: #f8fafc; }
@@ -68,7 +68,7 @@ st.markdown("""
     .property-name-display { font-size: 1.4rem; font-weight: 700; color: #1e293b; line-height: 2.2; }
     .section-title { font-size: 1.2rem; font-weight: 800; color: #1e293b; border-left: 5px solid #3b82f6; padding-left: 12px; margin-top: 1.5rem; margin-bottom: 1rem; }
     
-    /* 特定の入力フォーム（工事費・各賃料）のみ青色強調 */
+    /* 特定項目のみ青色強調 */
     div[data-testid="stNumberInput"]:has(input[aria-label*="工事費"]) input,
     div[data-testid="stNumberInput"]:has(input[aria-label*="VU評価"]) input,
     div[data-testid="stNumberInput"]:has(input[aria-label*="マイソク"]) input,
@@ -77,7 +77,7 @@ st.markdown("""
         font-weight: 800 !important;
     }
     
-    /* 確定（disabled）後の文字色をすべて黒に強制上書き */
+    /* 確定後の黒字化 */
     div[data-testid="stNumberInput"] input:disabled {
         color: #000000 !important;
         -webkit-text-fill-color: #000000 !important;
@@ -130,10 +130,10 @@ st.markdown('<div class="main-header-title notranslate">Value up 収支シミュ
 if input_id and k_data:
     p_name = k_data["物件名"]["value"] if "物件名" in k_data else "物件名未設定"
     
-    # 【プレースホルダ】最上部に場所を確保
+    # プレースホルダ：物件名とボタン
     header_placeholder = st.empty()
     
-    # 賃料設定（変数を先に確定させる）
+    # 賃料設定セクション
     st.markdown('<div class="section-title notranslate">賃料設定</div>', unsafe_allow_html=True)
     rent_cols = st.columns(4)
     r_base = rent_cols[0].number_input("仕入れ許容(万)", value=get_val("仕入れ許容賃料", divide=10000), step=0.1, disabled=is_fixed)
@@ -141,7 +141,7 @@ if input_id and k_data:
     r_mai = rent_cols[2].number_input("マイソク(万)", value=get_val("マイソク賃料", divide=10000), step=0.1, disabled=is_fixed)
     r_ram = rent_cols[3].number_input("RAM募集(万)", value=get_val("RAM募集賃料", divide=10000), step=0.1, disabled=is_fixed)
 
-    # 確保した場所（最上部）に物件名とボタンを表示
+    # プレースホルダへ流し込み
     with header_placeholder.container():
         st.write("") 
         t_col, a_col = st.columns([7, 3])
@@ -170,21 +170,33 @@ if input_id and k_data:
                     else:
                         st.error("保存失敗。")
 
-    # --- 計算ロジックと結果表示 ---
+    # --- 7. 計算ロジック ---
     mng_total = m_fee + r_fee
+    # 仕入れ時の販売想定価格
     p_base = math.floor((((r_base - (mng_total/10000))*12)/(y_base/100))/10)*10 if y_base else 0
+    # VU評価時の販売想定価格
     p_vu = math.floor((((r_vu - (mng_total/10000))*12)/(y_vu/100))/10)*10 if y_vu else 0
+    
+    # ★ 仕入粗利と仕入粗利率の計算
     prof_a = p_base - p_price - (r_base * 3)
+    rate_a = (prof_a / p_base * 100) if p_base else 0
+    
     prof_b = p_vu - p_base - c_cost
     total_p = prof_a + prof_b
     total_r = (total_p / p_vu * 100) if p_vu else 0
 
+    # --- 8. 粗利分析表示 ---
     st.markdown('<div class="section-title notranslate">粗利分析</div>', unsafe_allow_html=True)
     s1, s2, s3 = st.columns(3)
-    with s1: st.markdown(f'<div class="metric-card"><div class="metric-label">仕入粗利</div><div class="metric-value">{prof_a:.1f}万</div></div>', unsafe_allow_html=True)
-    with s2: st.markdown(f'<div class="metric-card"><div class="metric-label">VU粗利</div><div class="metric-value">{prof_b:.1f}万</div><div style="font-size:0.75rem;">工事費 {int(c_cost)}万</div></div>', unsafe_allow_html=True)
-    with s3: st.markdown(f'<div class="metric-card total-profit-card"><div class="metric-label">会社総粗利</div><div class="metric-value">{total_p:.1f}万</div><div class="rate-text" style="font-weight:600; color:#3b82f6;">{total_r:.2f}%</div></div>', unsafe_allow_html=True)
+    # ★ 仕入粗利カードに rate_a を復旧
+    with s1: 
+        st.markdown(f'<div class="metric-card"><div class="metric-label">仕入粗利</div><div class="metric-value">{prof_a:.1f}万</div><div style="color:#64748b; font-weight:600;">{rate_a:.2f}%</div></div>', unsafe_allow_html=True)
+    with s2: 
+        st.markdown(f'<div class="metric-card"><div class="metric-label">VU粗利</div><div class="metric-value">{prof_b:.1f}万</div><div style="font-size:0.75rem;">工事費 {int(c_cost)}万</div></div>', unsafe_allow_html=True)
+    with s3: 
+        st.markdown(f'<div class="metric-card total-profit-card"><div class="metric-label">会社総粗利</div><div class="metric-value">{total_p:.1f}万</div><div class="rate-text" style="font-weight:600; color:#3b82f6;">{total_r:.2f}%</div></div>', unsafe_allow_html=True)
 
+    # --- 9. 販売・CF詳細 ---
     st.markdown('<div class="section-title notranslate">販売・CF詳細</div>', unsafe_allow_html=True)
     res = st.columns(4)
     patterns = [("仕入れ時", r_base, p_base), ("VU評価時", r_vu, p_vu), ("マイソク", r_mai, p_vu), ("RAM募集", r_ram, p_vu)]
