@@ -31,7 +31,7 @@ if not st.session_state.authenticated:
             st.rerun()
     st.stop()
 
-# --- 3. kintoneデータ連携関数 ---
+# --- 3. kintoneデータ連携＆Slack通知関数 ---
 def fetch_kintone_data(ts_id):
     clean_id = normalize_code(ts_id)
     url = f"https://ga-tech.cybozu.com/k/v1/records.json"
@@ -56,6 +56,18 @@ def update_kintone_record(record_id, payload):
         resp = requests.put(url, json=data, headers=headers)
         return resp.status_code == 200
     except: return False
+
+# 【追加】Slackスレッドへ通知を送る関数
+def notify_slack_via_gas(record_id):
+    gas_url = "https://script.google.com/a/macros/ga-tech.co.jp/s/AKfycbySFLWGJAJt5nA61Y4WKgoeYqUxkHg5dbBgb5IlKle5lM4nbXft3yzlJtAaqVzDWwAf5g/exec"
+    params = {
+        "ID": record_id,
+        "mode": "update"  # スレッド返信モードを指定
+    }
+    try:
+        requests.get(gas_url, params=params, timeout=10)
+    except Exception as e:
+        print(f"Slack通知エラー: {e}")
 
 # --- 4. デザインCSS ---
 st.markdown("""
@@ -164,8 +176,13 @@ if input_id and k_data:
                         "条件確定": {"value": ["確認済"]},
                         "VU可否": {"value": "パス準備"}
                     }
+                    
+                    # kintoneの更新が成功したらSlackへも通知する
                     if update_kintone_record(k_data["$id"]["value"], payload):
-                        st.success("保存完了！")
+                        notify_slack_via_gas(k_data["$id"]["value"]) # 【追加】ここでGASを呼び出し
+                        st.success("保存完了！Slackへ確定情報を送信しました。")
+                        import time
+                        time.sleep(1) # 通知を見せるために1秒だけ待機
                         st.rerun()
                     else:
                         st.error("保存失敗。")
