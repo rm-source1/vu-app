@@ -72,7 +72,8 @@ def send_slack_thread_direct(k_data, val_base, val_vu, val_mai, val_ram):
         slack_token = st.secrets["SLACK_BOT_TOKEN"]
         channel_id = st.secrets["SLACK_CHANNEL_ID"]
         
-        text = f"""条件が確定しました。
+        # 【変更】冒頭にメンションを追加しました
+        text = f"""<@{'UMNGA526S'}> 条件が確定しました。
  ・仕入賃料：{val_base:.1f}万
  ・VU評価   ：{val_vu:.1f}万
  ・マイソク：{val_mai:.1f}万
