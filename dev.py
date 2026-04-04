@@ -31,7 +31,7 @@ if not st.session_state.authenticated:
             st.rerun()
     st.stop()
 
-# --- 3. kintoneデータ連携＆Slack通知関数 ---
+# --- 3. kintoneデータ連携関数 ---
 def fetch_kintone_data(ts_id):
     clean_id = normalize_code(ts_id)
     url = f"https://ga-tech.cybozu.com/k/v1/records.json"
@@ -56,18 +56,6 @@ def update_kintone_record(record_id, payload):
         resp = requests.put(url, json=data, headers=headers)
         return resp.status_code == 200
     except: return False
-
-# 【追加】Slackスレッドへ通知を送る関数
-def notify_slack_via_gas(record_id):
-    gas_url = "https://script.google.com/a/macros/ga-tech.co.jp/s/AKfycbySFLWGJAJt5nA61Y4WKgoeYqUxkHg5dbBgb5IlKle5lM4nbXft3yzlJtAaqVzDWwAf5g/exec"
-    params = {
-        "ID": record_id,
-        "mode": "update"  # スレッド返信モードを指定
-    }
-    try:
-        requests.get(gas_url, params=params, timeout=10)
-    except Exception as e:
-        print(f"Slack通知エラー: {e}")
 
 # --- 4. デザインCSS ---
 st.markdown("""
@@ -127,6 +115,10 @@ with st.sidebar:
     lock_label = " (🔒 確定済)" if is_fixed else ""
     st.markdown(f'<div class="notranslate" style="font-weight:bold; font-size:1.1rem;">基本データ{lock_label}</div>', unsafe_allow_html=True)
     p_price = st.number_input("仕入価格(万)", value=int(get_val("仕入価格")), step=10, disabled=is_fixed)
+    
+    # ★ 新規追加：仕入費用_その他（円単位で取得し、万単位で表示）
+    p_other = st.number_input("仕入費用_その他(万)", value=int(get_val("仕入れ費用_その他", divide=10000)), step=1, disabled=is_fixed)
+    
     m_fee = st.number_input("管理費(円)", value=int(get_val("管理費")), step=100, disabled=is_fixed)
     r_fee = st.number_input("修繕積立金(円)", value=int(get_val("修繕積立金")), step=100, disabled=is_fixed)
     c_cost = st.number_input("工事費想定(万)", value=int(get_val("工事費想定")), step=10, disabled=is_fixed)
@@ -173,16 +165,12 @@ if input_id and k_data:
                         "利回り_価格設定": {"value": y_vu},
                         "ローン年数": {"value": l_year},
                         "金利": {"value": l_rate},
+                        "仕入れ費用_その他": {"value": p_other * 10000}, # ★ 追加：円単位に戻して保存
                         "条件確定": {"value": ["確認済"]},
                         "VU可否": {"value": "パス準備"}
                     }
-                    
-                    # kintoneの更新が成功したらSlackへも通知する
                     if update_kintone_record(k_data["$id"]["value"], payload):
-                        notify_slack_via_gas(k_data["$id"]["value"]) # 【追加】ここでGASを呼び出し
-                        st.success("保存完了！Slackへ確定情報を送信しました。")
-                        import time
-                        time.sleep(1) # 通知を見せるために1秒だけ待機
+                        st.success("保存完了！")
                         st.rerun()
                     else:
                         st.error("保存失敗。")
@@ -194,8 +182,8 @@ if input_id and k_data:
     # VU評価時の販売想定価格
     p_vu = math.floor((((r_vu - (mng_total/10000))*12)/(y_vu/100))/10)*10 if y_vu else 0
     
-    # ★ 仕入粗利と仕入粗利率の計算
-    prof_a = p_base - p_price - (r_base * 3)
+    # ★ 仕入粗利と仕入粗利率の計算（p_other を差し引く）
+    prof_a = p_base - p_price - p_other - (r_base * 3)
     rate_a = (prof_a / p_base * 100) if p_base else 0
     
     prof_b = p_vu - p_base - c_cost
@@ -205,7 +193,6 @@ if input_id and k_data:
     # --- 8. 粗利分析表示 ---
     st.markdown('<div class="section-title notranslate">粗利分析</div>', unsafe_allow_html=True)
     s1, s2, s3 = st.columns(3)
-    # ★ 仕入粗利カードに rate_a を復旧
     with s1: 
         st.markdown(f'<div class="metric-card"><div class="metric-label">仕入粗利</div><div class="metric-value">{prof_a:.1f}万</div><div style="color:#64748b; font-weight:600;">{rate_a:.2f}%</div></div>', unsafe_allow_html=True)
     with s2: 
