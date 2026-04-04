@@ -68,7 +68,6 @@ st.markdown("""
     .property-name-display { font-size: 1.4rem; font-weight: 700; color: #1e293b; line-height: 2.2; }
     .section-title { font-size: 1.2rem; font-weight: 800; color: #1e293b; border-left: 5px solid #3b82f6; padding-left: 12px; margin-top: 1.5rem; margin-bottom: 1rem; }
     
-    /* 特定項目のみ青色強調 */
     div[data-testid="stNumberInput"]:has(input[aria-label*="工事費"]) input,
     div[data-testid="stNumberInput"]:has(input[aria-label*="VU評価"]) input,
     div[data-testid="stNumberInput"]:has(input[aria-label*="マイソク"]) input,
@@ -77,7 +76,6 @@ st.markdown("""
         font-weight: 800 !important;
     }
     
-    /* 確定後の黒字化 */
     div[data-testid="stNumberInput"] input:disabled {
         color: #000000 !important;
         -webkit-text-fill-color: #000000 !important;
@@ -116,8 +114,8 @@ with st.sidebar:
     st.markdown(f'<div class="notranslate" style="font-weight:bold; font-size:1.1rem;">基本データ{lock_label}</div>', unsafe_allow_html=True)
     p_price = st.number_input("仕入価格(万)", value=int(get_val("仕入価格")), step=10, disabled=is_fixed)
     
-    # ★ 新規追加：仕入費用_その他（円単位で取得し、万単位で表示）
-    p_other = st.number_input("仕入費用_その他(万)", value=int(get_val("仕入れ費用_その他", divide=10000)), step=1, disabled=is_fixed)
+    # ★ 修正箇所：int()を外し、stepを0.1（1000円単位）に変更。formatで小数点第1位まで表示。
+    p_other = st.number_input("仕入費用_その他(万)", value=get_val("仕入れ費用_その他", divide=10000), step=0.1, format="%.1f", disabled=is_fixed)
     
     m_fee = st.number_input("管理費(円)", value=int(get_val("管理費")), step=100, disabled=is_fixed)
     r_fee = st.number_input("修繕積立金(円)", value=int(get_val("修繕積立金")), step=100, disabled=is_fixed)
@@ -133,11 +131,8 @@ st.markdown('<div class="main-header-title notranslate">Value up 収支シミュ
 
 if input_id and k_data:
     p_name = k_data["物件名"]["value"] if "物件名" in k_data else "物件名未設定"
-    
-    # プレースホルダ：物件名とボタン
     header_placeholder = st.empty()
     
-    # 賃料設定セクション
     st.markdown('<div class="section-title notranslate">賃料設定</div>', unsafe_allow_html=True)
     rent_cols = st.columns(4)
     r_base = rent_cols[0].number_input("仕入れ許容(万)", value=get_val("仕入れ許容賃料", divide=10000), step=0.1, disabled=is_fixed)
@@ -145,7 +140,6 @@ if input_id and k_data:
     r_mai = rent_cols[2].number_input("マイソク(万)", value=get_val("マイソク賃料", divide=10000), step=0.1, disabled=is_fixed)
     r_ram = rent_cols[3].number_input("RAM募集(万)", value=get_val("RAM募集賃料", divide=10000), step=0.1, disabled=is_fixed)
 
-    # プレースホルダへ流し込み
     with header_placeholder.container():
         st.write("") 
         t_col, a_col = st.columns([7, 3])
@@ -165,7 +159,7 @@ if input_id and k_data:
                         "利回り_価格設定": {"value": y_vu},
                         "ローン年数": {"value": l_year},
                         "金利": {"value": l_rate},
-                        "仕入れ費用_その他": {"value": p_other * 10000}, # ★ 追加：円単位に戻して保存
+                        "仕入れ費用_その他": {"value": int(p_other * 10000)}, # ★ 保存時もint化して端数処理
                         "条件確定": {"value": ["確認済"]},
                         "VU可否": {"value": "パス準備"}
                     }
@@ -177,12 +171,10 @@ if input_id and k_data:
 
     # --- 7. 計算ロジック ---
     mng_total = m_fee + r_fee
-    # 仕入れ時の販売想定価格
     p_base = math.floor((((r_base - (mng_total/10000))*12)/(y_base/100))/10)*10 if y_base else 0
-    # VU評価時の販売想定価格
     p_vu = math.floor((((r_vu - (mng_total/10000))*12)/(y_vu/100))/10)*10 if y_vu else 0
     
-    # ★ 仕入粗利と仕入粗利率の計算（p_other を差し引く）
+    # ★ 仕入粗利計算（p_otherが小数でも正確に引かれます）
     prof_a = p_base - p_price - p_other - (r_base * 3)
     rate_a = (prof_a / p_base * 100) if p_base else 0
     
