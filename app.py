@@ -31,7 +31,7 @@ if not st.session_state.authenticated:
             st.rerun()
     st.stop()
 
-# --- 3. 外部連携関数（kintone & Slack Bot API） ---
+# --- 3. kintoneデータ連携関数 ---
 def fetch_kintone_data(ts_id):
     clean_id = normalize_code(ts_id)
     url = f"https://ga-tech.cybozu.com/k/v1/records.json"
@@ -57,22 +57,45 @@ def update_kintone_record(record_id, payload):
         return resp.status_code == 200
     except: return False
 
-# ★ ボットトークン方式でのSlack通知
-def send_slack_notification(ts_id, property_name):
-    token = st.secrets.get("SLACK_BOT_TOKEN")
-    channel = st.secrets.get("SLACK_CHANNEL_ID")
-    if not token or not channel: return
+# 【追加】Streamlitから直接Slackのスレッドに通知する関数
+def send_slack_thread_direct(k_data, val_base, val_vu, val_mai, val_ram):
+    # kintoneのデータからスレッドID（slack_ts_a）を取得
+    thread_ts = ""
+    if k_data and "slack_ts_a" in k_data and k_data["slack_ts_a"]["value"]:
+        thread_ts = k_data["slack_ts_a"]["value"]
     
-    url = "https://slack.com/api/chat.postMessage"
-    headers = {"Authorization": f"Bearer {token}"}
-    payload = {
-        "channel": channel,
-        "text": f"✅ *物件条件が確定されました*\n----------------------------\n*【TS_ID】*: {ts_id}\n*【物件名】*: {property_name}\n*【URL】*: https://ga-tech.cybozu.com/k/479/show#record={ts_id}"
-    }
+    if not thread_ts:
+        print("スレッドIDが見つからないため、通知をスキップしました。")
+        return False
+        
     try:
-        requests.post(url, headers=headers, json=payload)
-    except:
-        pass
+        slack_token = st.secrets["SLACK_BOT_TOKEN"]
+        channel_id = st.secrets["SLACK_CHANNEL_ID"]
+        
+        # 【変更】冒頭にメンションを追加しました
+        text = f"""<@{'UMNGA526S'}> 条件が確定しました。
+・仕入賃料：{val_base:.1f}万
+・VU評価   ：{val_vu:.1f}万
+・マイソク：{val_mai:.1f}万
+・RAM募集：{val_ram:.1f}万"""
+
+        url = "https://slack.com/api/chat.postMessage"
+        headers = {
+            "Authorization": f"Bearer {slack_token}",
+            "Content-Type": "application/json"
+        }
+        payload = {
+            "channel": channel_id,
+            "text": text,
+            "thread_ts": thread_ts
+            # ここに「reply_broadcast」を入れないことで、スレッド内のみへの通知になります
+        }
+        
+        res = requests.post(url, headers=headers, json=payload)
+        return res.status_code == 200
+    except Exception as e:
+        print(f"Slack送信エラー: {e}")
+        return False
 
 # --- 4. デザインCSS ---
 st.markdown("""
@@ -89,22 +112,16 @@ st.markdown("""
     div[data-testid="stNumberInput"]:has(input[aria-label*="VU評価"]) input,
     div[data-testid="stNumberInput"]:has(input[aria-label*="マイソク"]) input,
     div[data-testid="stNumberInput"]:has(input[aria-label*="RAM募集"]) input {
-        color: #3b82f6 !important;
-        font-weight: 800 !important;
+        color: #3b82f6 !important; font-weight: 800 !important;
     }
-    
     div[data-testid="stNumberInput"] input:disabled {
-        color: #000000 !important;
-        -webkit-text-fill-color: #000000 !important;
-        opacity: 1 !important;
+        color: #000000 !important; -webkit-text-fill-color: #000000 !important; opacity: 1 !important;
     }
-
     .metric-card { background-color: #ffffff; border: 1px solid #e2e8f0; padding: 20px; border-radius: 10px; text-align: center; height: 140px; display: flex; flex-direction: column; justify-content: center; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
     .metric-value { font-size: 1.6rem; font-weight: 800; color: #0f172a; }
     .total-profit-card { border: 2.5px solid #3b82f6 !important; background-color: #f0f7ff !important; }
     .total-profit-card .metric-label, .total-profit-card .metric-value, .total-profit-card .rate-text { color: #3b82f6 !important; }
     .detail-card { background-color: #ffffff; padding: 15px; border-radius: 8px; border: 1px solid #f1f5f9; margin-top: 10px; }
-    .detail-val-text { font-weight: 800; color: #1e293b; font-size: 1.1rem; }
     </style>
 """, unsafe_allow_html=True)
 
@@ -130,7 +147,10 @@ with st.sidebar:
     lock_label = " (🔒 確定済)" if is_fixed else ""
     st.markdown(f'<div class="notranslate" style="font-weight:bold; font-size:1.1rem;">基本データ{lock_label}</div>', unsafe_allow_html=True)
     p_price = st.number_input("仕入価格(万)", value=int(get_val("仕入価格")), step=10, disabled=is_fixed)
+    
+    # ★追加：仕入費用_その他（小数点第1位まで対応）
     p_other = st.number_input("仕入費用_その他(万)", value=get_val("仕入れ費用_その他", divide=10000), step=0.1, format="%.1f", disabled=is_fixed)
+    
     m_fee = st.number_input("管理費(円)", value=int(get_val("管理費")), step=100, disabled=is_fixed)
     r_fee = st.number_input("修繕積立金(円)", value=int(get_val("修繕積立金")), step=100, disabled=is_fixed)
     c_cost = st.number_input("工事費想定(万)", value=int(get_val("工事費想定")), step=10, disabled=is_fixed)
@@ -145,8 +165,8 @@ st.markdown('<div class="main-header-title notranslate">Value up 収支シミュ
 
 if input_id and k_data:
     p_name = k_data["物件名"]["value"] if "物件名" in k_data else "物件名未設定"
-    header_placeholder = st.empty()
     
+    header_placeholder = st.empty()
     st.markdown('<div class="section-title notranslate">賃料設定</div>', unsafe_allow_html=True)
     rent_cols = st.columns(4)
     r_base = rent_cols[0].number_input("仕入れ許容(万)", value=get_val("仕入れ許容賃料", divide=10000), step=0.1, disabled=is_fixed)
@@ -173,14 +193,17 @@ if input_id and k_data:
                         "利回り_価格設定": {"value": y_vu},
                         "ローン年数": {"value": l_year},
                         "金利": {"value": l_rate},
-                        "仕入れ費用_その他": {"value": int(p_other * 10000)},
+                        "仕入れ費用_その他": {"value": int(p_other * 10000)}, # ★追加：円単位で保存
                         "条件確定": {"value": ["確認済"]},
                         "VU可否": {"value": "パス準備"}
                     }
                     if update_kintone_record(k_data["$id"]["value"], payload):
-                        # ★ ボットトークン方式でSlack通知を実行
-                        send_slack_notification(input_id, p_name)
-                        st.success("保存完了！Slack通知を送信しました。")
+                        # kintone保存直後に、Pythonから直接Slack（スレッドのみ）へ送信
+                        send_slack_thread_direct(k_data, r_base, r_vu, r_mai, r_ram)
+                        
+                        import time
+                        st.success("保存完了！")
+                        time.sleep(1) # メッセージを1秒だけ表示してリロード
                         st.rerun()
                     else:
                         st.error("保存失敗。")
@@ -189,8 +212,11 @@ if input_id and k_data:
     mng_total = m_fee + r_fee
     p_base = math.floor((((r_base - (mng_total/10000))*12)/(y_base/100))/10)*10 if y_base else 0
     p_vu = math.floor((((r_vu - (mng_total/10000))*12)/(y_vu/100))/10)*10 if y_vu else 0
+    
+    # ★変更：仕入粗利計算（p_other を差し引く）
     prof_a = p_base - p_price - p_other - (r_base * 3)
     rate_a = (prof_a / p_base * 100) if p_base else 0
+    
     prof_b = p_vu - p_base - c_cost
     total_p = prof_a + prof_b
     total_r = (total_p / p_vu * 100) if p_vu else 0
@@ -198,12 +224,9 @@ if input_id and k_data:
     # --- 8. 粗利分析表示 ---
     st.markdown('<div class="section-title notranslate">粗利分析</div>', unsafe_allow_html=True)
     s1, s2, s3 = st.columns(3)
-    with s1: 
-        st.markdown(f'<div class="metric-card"><div class="metric-label">仕入粗利</div><div class="metric-value">{prof_a:.1f}万</div><div style="color:#64748b; font-weight:600;">{rate_a:.2f}%</div></div>', unsafe_allow_html=True)
-    with s2: 
-        st.markdown(f'<div class="metric-card"><div class="metric-label">VU粗利</div><div class="metric-value">{prof_b:.1f}万</div><div style="font-size:0.75rem;">工事費 {int(c_cost)}万</div></div>', unsafe_allow_html=True)
-    with s3: 
-        st.markdown(f'<div class="metric-card total-profit-card"><div class="metric-label">会社総粗利</div><div class="metric-value">{total_p:.1f}万</div><div class="rate-text" style="font-weight:600; color:#3b82f6;">{total_r:.2f}%</div></div>', unsafe_allow_html=True)
+    with s1: st.markdown(f'<div class="metric-card"><div class="metric-label">仕入粗利</div><div class="metric-value">{prof_a:.1f}万</div><div style="color:#64748b; font-weight:600;">{rate_a:.2f}%</div></div>', unsafe_allow_html=True)
+    with s2: st.markdown(f'<div class="metric-card"><div class="metric-label">VU粗利</div><div class="metric-value">{prof_b:.1f}万</div><div style="font-size:0.75rem;">工事費 {int(c_cost)}万</div></div>', unsafe_allow_html=True)
+    with s3: st.markdown(f'<div class="metric-card total-profit-card"><div class="metric-label">会社総粗利</div><div class="metric-value">{total_p:.1f}万</div><div class="rate-text" style="font-weight:600; color:#3b82f6;">{total_r:.2f}%</div></div>', unsafe_allow_html=True)
 
     # --- 9. 販売・CF詳細 ---
     st.markdown('<div class="section-title notranslate">販売・CF詳細</div>', unsafe_allow_html=True)
@@ -213,5 +236,4 @@ if input_id and k_data:
         net_rent = (rent * 10000) - mng_total
         pay = int((sales*10000)*((l_rate/100/12)*(1+l_rate/100/12)**(l_year*12))/((1+l_rate/100/12)**(l_year*12)-1)) if l_rate and l_year else 0
         yld = (net_rent * 12) / (sales * 10000) * 100 if sales else 0
-        with res[i]:
-            st.markdown(f'<div class="detail-card"><b>{name}</b><br>販売: {int(sales):,}万<br>利回り: {yld:.2f}%<br>CF: {int(net_rent - pay):,}円/月</div>', unsafe_allow_html=True)
+        with res[i]: st.markdown(f'<div class="detail-card"><b>{name}</b><br>販売: {int(sales):,}万<br>利回り: {yld:.2f}%<br>CF: {int(net_rent - pay):,}円/月</div>', unsafe_allow_html=True)
