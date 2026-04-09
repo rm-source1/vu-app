@@ -31,7 +31,7 @@ if not st.session_state.authenticated:
             st.rerun()
     st.stop()
 
-# --- 3. 外部連携関数（kintone & Slack） ---
+# --- 3. 外部連携関数（kintone & Slack Bot API） ---
 def fetch_kintone_data(ts_id):
     clean_id = normalize_code(ts_id)
     url = f"https://ga-tech.cybozu.com/k/v1/records.json"
@@ -57,14 +57,22 @@ def update_kintone_record(record_id, payload):
         return resp.status_code == 200
     except: return False
 
+# ★ ボットトークン方式でのSlack通知
 def send_slack_notification(ts_id, property_name):
-    webhook_url = st.secrets.get("SLACK_WEBHOOK_URL")
-    if not webhook_url: return 
+    token = st.secrets.get("SLACK_BOT_TOKEN")
+    channel = st.secrets.get("SLACK_CHANNEL_ID")
+    if not token or not channel: return
+    
+    url = "https://slack.com/api/chat.postMessage"
+    headers = {"Authorization": f"Bearer {token}"}
     payload = {
+        "channel": channel,
         "text": f"✅ *物件条件が確定されました*\n----------------------------\n*【TS_ID】*: {ts_id}\n*【物件名】*: {property_name}\n*【URL】*: https://ga-tech.cybozu.com/k/479/show#record={ts_id}"
     }
-    try: requests.post(webhook_url, json=payload)
-    except: pass
+    try:
+        requests.post(url, headers=headers, json=payload)
+    except:
+        pass
 
 # --- 4. デザインCSS ---
 st.markdown("""
@@ -77,7 +85,6 @@ st.markdown("""
     .property-name-display { font-size: 1.4rem; font-weight: 700; color: #1e293b; line-height: 2.2; }
     .section-title { font-size: 1.2rem; font-weight: 800; color: #1e293b; border-left: 5px solid #3b82f6; padding-left: 12px; margin-top: 1.5rem; margin-bottom: 1rem; }
     
-    /* 特定項目のみ青色強調 */
     div[data-testid="stNumberInput"]:has(input[aria-label*="工事費"]) input,
     div[data-testid="stNumberInput"]:has(input[aria-label*="VU評価"]) input,
     div[data-testid="stNumberInput"]:has(input[aria-label*="マイソク"]) input,
@@ -86,7 +93,6 @@ st.markdown("""
         font-weight: 800 !important;
     }
     
-    /* 確定（disabled）後の文字色をすべて黒に強制上書き */
     div[data-testid="stNumberInput"] input:disabled {
         color: #000000 !important;
         -webkit-text-fill-color: #000000 !important;
@@ -124,10 +130,7 @@ with st.sidebar:
     lock_label = " (🔒 確定済)" if is_fixed else ""
     st.markdown(f'<div class="notranslate" style="font-weight:bold; font-size:1.1rem;">基本データ{lock_label}</div>', unsafe_allow_html=True)
     p_price = st.number_input("仕入価格(万)", value=int(get_val("仕入価格")), step=10, disabled=is_fixed)
-    
-    # ★ 仕入費用_その他（小数点対応版）
     p_other = st.number_input("仕入費用_その他(万)", value=get_val("仕入れ費用_その他", divide=10000), step=0.1, format="%.1f", disabled=is_fixed)
-    
     m_fee = st.number_input("管理費(円)", value=int(get_val("管理費")), step=100, disabled=is_fixed)
     r_fee = st.number_input("修繕積立金(円)", value=int(get_val("修繕積立金")), step=100, disabled=is_fixed)
     c_cost = st.number_input("工事費想定(万)", value=int(get_val("工事費想定")), step=10, disabled=is_fixed)
@@ -175,7 +178,7 @@ if input_id and k_data:
                         "VU可否": {"value": "パス準備"}
                     }
                     if update_kintone_record(k_data["$id"]["value"], payload):
-                        # ★ Slack通知を復活実行
+                        # ★ ボットトークン方式でSlack通知を実行
                         send_slack_notification(input_id, p_name)
                         st.success("保存完了！Slack通知を送信しました。")
                         st.rerun()
@@ -186,11 +189,8 @@ if input_id and k_data:
     mng_total = m_fee + r_fee
     p_base = math.floor((((r_base - (mng_total/10000))*12)/(y_base/100))/10)*10 if y_base else 0
     p_vu = math.floor((((r_vu - (mng_total/10000))*12)/(y_vu/100))/10)*10 if y_vu else 0
-    
-    # ★ 仕入粗利計算（p_other を差し引く）
     prof_a = p_base - p_price - p_other - (r_base * 3)
     rate_a = (prof_a / p_base * 100) if p_base else 0
-    
     prof_b = p_vu - p_base - c_cost
     total_p = prof_a + prof_b
     total_r = (total_p / p_vu * 100) if p_vu else 0
