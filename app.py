@@ -187,6 +187,7 @@ if input_id and k_data:
             else:
                 if st.button("🚀 条件を確定して保存", type="primary", use_container_width=True, key="active_btn"):
                     payload = {
+                        "仕入れ許容賃料": {"value": r_base * 10000}, # ★ 今回追加：仕入れ許容賃料を書き戻す
                         "VU評価賃料": {"value": r_vu * 10000},
                         "マイソク賃料": {"value": r_mai * 10000},
                         "RAM募集賃料": {"value": r_ram * 10000},
