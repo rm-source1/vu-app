@@ -58,7 +58,7 @@ def update_kintone_record(record_id, payload):
     except: return False
 
 # 【追加】Streamlitから直接Slackのスレッドに通知する関数
-def send_slack_thread_direct(k_data, val_base, val_vu, val_mai, val_ram):
+def send_slack_thread_direct(k_data, val_yield, val_base, val_vu, val_mai, val_ram):
     # kintoneのデータからスレッドID（slack_ts_a）を取得
     thread_ts = ""
     if k_data and "slack_ts_a" in k_data and k_data["slack_ts_a"]["value"]:
@@ -72,8 +72,9 @@ def send_slack_thread_direct(k_data, val_base, val_vu, val_mai, val_ram):
         slack_token = st.secrets["SLACK_BOT_TOKEN"]
         channel_id = st.secrets["SLACK_CHANNEL_ID"]
         
-        # 【変更】冒頭にメンションを追加しました
+        # 【変更】冒頭にメンションと利回りを追加しました
         text = f"""<@{'UMNGA526S'}> 条件が確定しました。
+・利回り：{val_yield:.1f}%
 ・仕入賃料：{val_base:.1f}万
 ・VU評価   ：{val_vu:.1f}万
 ・マイソク：{val_mai:.1f}万
@@ -202,7 +203,7 @@ if input_id and k_data:
                     }
                     if update_kintone_record(k_data["$id"]["value"], payload):
                         # kintone保存直後に、Pythonから直接Slack（スレッドのみ）へ送信
-                        send_slack_thread_direct(k_data, r_base, r_vu, r_mai, r_ram)
+                        send_slack_thread_direct(k_data, y_vu, r_base, r_vu, r_mai, r_ram)
                         
                         import time
                         st.success("保存完了！")
