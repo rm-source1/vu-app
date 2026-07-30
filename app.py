@@ -190,7 +190,7 @@ if input_id and k_data:
     # キントーンのフィールド内の改行文字を削除またはスペースに置換する場合はここで処理
     if bank_reply:
         bank_reply = bank_reply.replace('\n', ' ')
-        st.markdown(f'<div style="margin-top: 1.5rem; padding: 15px; background-color: #f1f5f9; border-radius: 8px; color: #334155; font-size: 0.95rem; line-height: 1.5;"><strong>[銀行評価]</strong>　　 {bank_reply}</div>', unsafe_allow_html=True)
+        st.markdown(f'<div style="margin-top: 1.5rem; padding: 15px; background-color: #f1f5f9; border-radius: 8px; color: #334155; font-size: 0.95rem; line-height: 1.5;"><strong>[銀行評価]</strong>　 {bank_reply}</div>', unsafe_allow_html=True)
     
     with header_placeholder.container():
         st.write("") 
