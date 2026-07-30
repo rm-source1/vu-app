@@ -187,8 +187,10 @@ if input_id and k_data:
 
     # 【追加】銀行回答の表示 (粗利分析の上)
     bank_reply = k_data.get("銀行回答", {}).get("value", "")
+    # キントーンのフィールド内の改行文字を削除またはスペースに置換する場合はここで処理
     if bank_reply:
-        st.markdown(f'<div style="margin-top: 1.5rem; padding: 15px; background-color: #f1f5f9; border-radius: 8px; color: #334155; font-size: 0.95rem; line-height: 1.5;"><strong>[銀行評価]</strong><br>{bank_reply}</div>', unsafe_allow_html=True)
+        bank_reply = bank_reply.replace('\n', ' ')
+        st.markdown(f'<div style="margin-top: 1.5rem; padding: 15px; background-color: #f1f5f9; border-radius: 8px; color: #334155; font-size: 0.95rem; line-height: 1.5;"><strong>[銀行評価]</strong> {bank_reply}</div>', unsafe_allow_html=True)
     
     with header_placeholder.container():
         st.write("") 
