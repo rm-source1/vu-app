@@ -58,7 +58,7 @@ def update_kintone_record(record_id, payload):
     except: return False
 
 # 【追加】Streamlitから直接Slackのスレッドに通知する関数
-def send_slack_thread_direct(k_data, val_yield, val_base, val_vu, val_mai, val_ram):
+def send_slack_thread_direct(k_data, val_base, val_vu, val_mai, val_ram):
     # kintoneのデータからスレッドID（slack_ts_a）を取得
     thread_ts = ""
     if k_data and "slack_ts_a" in k_data and k_data["slack_ts_a"]["value"]:
@@ -72,9 +72,8 @@ def send_slack_thread_direct(k_data, val_yield, val_base, val_vu, val_mai, val_r
         slack_token = st.secrets["SLACK_BOT_TOKEN"]
         channel_id = st.secrets["SLACK_CHANNEL_ID"]
         
-        # 【変更】冒頭にメンションと利回りを追加しました
+        # 【変更】冒頭にメンションを追加しました
         text = f"""<@{'UMNGA526S'}> 条件が確定しました。
-・利回り：{val_yield:.1f}%
 ・仕入賃料：{val_base:.1f}万
 ・VU評価   ：{val_vu:.1f}万
 ・マイソク：{val_mai:.1f}万
@@ -156,6 +155,15 @@ with st.sidebar:
     r_fee = st.number_input("修繕積立金(円)", value=int(get_val("修繕積立金")), step=100, disabled=is_fixed)
     c_cost = st.number_input("工事費想定(万)", value=int(get_val("工事費想定")), step=10, disabled=is_fixed)
     st.divider()
+    
+    # 【追加】金融機関ドロップダウン
+    financial_options = ["", "ジャックス", "オリックス", "住信SBI銀行", "楽天銀行", "SBJ銀行"]
+    current_financial = ""
+    if k_data and "金融機関" in k_data and k_data["金融機関"].get("value"):
+        current_financial = k_data["金融機関"]["value"]
+    fin_index = financial_options.index(current_financial) if current_financial in financial_options else 0
+    selected_financial = st.selectbox("金融機関", options=financial_options, index=fin_index, disabled=is_fixed)
+
     y_base = st.number_input("利回り_仕入時(%)", value=get_val("利回り_仕入時"), step=0.1, disabled=is_fixed)
     y_vu = st.number_input("利回り_価格設定(%)", value=get_val("利回り_価格設定"), step=0.1, disabled=is_fixed)
     l_year = st.number_input("ローン年数(年)", value=int(get_val("ローン年数", default=26)), step=1, disabled=is_fixed)
@@ -177,6 +185,11 @@ if input_id and k_data:
     r_mai = rent_cols[2].number_input("マイソク(万)", value=get_val("マイソク賃料", divide=10000), step=0.1, disabled=is_fixed)
     r_ram = rent_cols[3].number_input("RAM募集(万)", value=get_val("RAM募集賃料", divide=10000), step=0.1, disabled=is_fixed)
 
+    # 【追加】銀行回答の表示 (粗利分析の上)
+    bank_reply = k_data.get("銀行回答", {}).get("value", "")
+    if bank_reply:
+        st.markdown(f'<div style="margin-top: 1.5rem; padding: 15px; background-color: #f1f5f9; border-radius: 8px; color: #334155; font-size: 0.95rem; line-height: 1.5;"><strong>[銀行評価]</strong><br>{bank_reply}</div>', unsafe_allow_html=True)
+    
     with header_placeholder.container():
         st.write("") 
         t_col, a_col = st.columns([7, 3])
@@ -188,7 +201,8 @@ if input_id and k_data:
             else:
                 if st.button("🚀 条件を確定して保存", type="primary", use_container_width=True, key="active_btn"):
                     payload = {
-                        "仕入れ許容賃料": {"value": r_base * 10000}, # ★ 今回追加：仕入れ許容賃料を書き戻す
+                        "金融機関": {"value": selected_financial}, # ★ 追加：金融機関の書き戻し
+                        "仕入れ許容賃料": {"value": r_base * 10000},
                         "VU評価賃料": {"value": r_vu * 10000},
                         "マイソク賃料": {"value": r_mai * 10000},
                         "RAM募集賃料": {"value": r_ram * 10000},
@@ -197,13 +211,13 @@ if input_id and k_data:
                         "利回り_価格設定": {"value": y_vu},
                         "ローン年数": {"value": l_year},
                         "金利": {"value": l_rate},
-                        "仕入れ費用_その他": {"value": int(p_other * 10000)}, # ★追加：円単位で保存
+                        "仕入れ費用_その他": {"value": int(p_other * 10000)},
                         "条件確定": {"value": ["確認済"]},
                         "VU可否": {"value": "パス準備"}
                     }
                     if update_kintone_record(k_data["$id"]["value"], payload):
                         # kintone保存直後に、Pythonから直接Slack（スレッドのみ）へ送信
-                        send_slack_thread_direct(k_data, y_vu, r_base, r_vu, r_mai, r_ram)
+                        send_slack_thread_direct(k_data, r_base, r_vu, r_mai, r_ram)
                         
                         import time
                         st.success("保存完了！")
