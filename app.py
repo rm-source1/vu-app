@@ -57,8 +57,8 @@ def update_kintone_record(record_id, payload):
         return resp.status_code == 200
     except: return False
 
-# 【追加】Streamlitから直接Slackのスレッドに通知する関数
-def send_slack_thread_direct(k_data, val_base, val_vu, val_mai, val_ram):
+# Streamlitから直接Slackのスレッドに通知する関数
+def send_slack_thread_direct(k_data, sel_fin, val_y_base, val_y_vu, val_base, val_vu, val_mai, val_ram, val_cost, val_other):
     # kintoneのデータからスレッドID（slack_ts_a）を取得
     thread_ts = ""
     if k_data and "slack_ts_a" in k_data and k_data["slack_ts_a"]["value"]:
@@ -67,17 +67,63 @@ def send_slack_thread_direct(k_data, val_base, val_vu, val_mai, val_ram):
     if not thread_ts:
         print("スレッドIDが見つからないため、通知をスキップしました。")
         return False
+
+    # kintoneの元データを安全に数値化・取得するヘルパー関数
+    def parse_k_val(field, default=0.0, divide=1):
+        if k_data and field in k_data:
+            v = k_data[field].get("value")
+            if not v: return default
+            try: return float(str(v).replace(',', '').strip()) / divide
+            except: return default
+        return default
+
+    # 変更差分の検出ロジック
+    changed_fields = []
+
+    old_fin = k_data.get("金融機関", {}).get("value", "") if k_data else ""
+    if old_fin != sel_fin:
+        changed_fields.append("金融機関")
+
+    if round(parse_k_val("工事費想定"), 1) != round(val_cost, 1):
+        changed_fields.append("工事費")
+
+    if round(parse_k_val("利回り_仕入時"), 2) != round(val_y_base, 2):
+        changed_fields.append("仕入時利回り")
+
+    if round(parse_k_val("利回り_価格設定"), 2) != round(val_y_vu, 2):
+        changed_fields.append("価格設定利回り")
+
+    if round(parse_k_val("仕入れ費用_その他", divide=10000), 1) != round(val_other, 1):
+        changed_fields.append("仕入費用_その他")
+
+    if round(parse_k_val("仕入れ許容賃料", divide=10000), 1) != round(val_base, 1):
+        changed_fields.append("仕入賃料")
+
+    if round(parse_k_val("VU評価賃料", divide=10000), 1) != round(val_vu, 1):
+        changed_fields.append("VU評価賃料")
+
+    if round(parse_k_val("マイソク賃料", divide=10000), 1) != round(val_mai, 1):
+        changed_fields.append("マイソク賃料")
+
+    if round(parse_k_val("RAM募集賃料", divide=10000), 1) != round(val_ram, 1):
+        changed_fields.append("RAM募集賃料")
+
+    # 変更があった場合のみ末尾に注記を追加
+    change_note = f"\n\n※{'・'.join(changed_fields)}が変更されました。" if changed_fields else ""
         
     try:
         slack_token = st.secrets["SLACK_BOT_TOKEN"]
         channel_id = st.secrets["SLACK_CHANNEL_ID"]
         
-        # 【変更】冒頭にメンションを追加しました
         text = f"""<@{'UMNGA526S'}> 条件が確定しました。
+・金融機関：{sel_fin}
+・仕入時利回り：{val_y_base:.1f}%
+・価格設定利回り：{val_y_vu:.1f}%
+
 ・仕入賃料：{val_base:.1f}万
 ・VU評価   ：{val_vu:.1f}万
 ・マイソク：{val_mai:.1f}万
-・RAM募集：{val_ram:.1f}万"""
+・RAM募集：{val_ram:.1f}万{change_note}"""
 
         url = "https://slack.com/api/chat.postMessage"
         headers = {
@@ -88,7 +134,6 @@ def send_slack_thread_direct(k_data, val_base, val_vu, val_mai, val_ram):
             "channel": channel_id,
             "text": text,
             "thread_ts": thread_ts
-            # ここに「reply_broadcast」を入れないことで、スレッド内のみへの通知になります
         }
         
         res = requests.post(url, headers=headers, json=payload)
@@ -148,7 +193,6 @@ with st.sidebar:
     st.markdown(f'<div class="notranslate" style="font-weight:bold; font-size:1.1rem;">基本データ{lock_label}</div>', unsafe_allow_html=True)
     p_price = st.number_input("仕入価格(万)", value=int(get_val("仕入価格")), step=10, disabled=is_fixed)
     
-    # ★追加：仕入費用_その他（小数点第1位まで対応）
     p_other = st.number_input("仕入費用_その他(万)", value=get_val("仕入れ費用_その他", divide=10000), step=0.1, format="%.1f", disabled=is_fixed)
     
     m_fee = st.number_input("管理費(円)", value=int(get_val("管理費")), step=100, disabled=is_fixed)
@@ -156,7 +200,6 @@ with st.sidebar:
     c_cost = st.number_input("工事費想定(万)", value=int(get_val("工事費想定")), step=10, disabled=is_fixed)
     st.divider()
     
-    # 【追加】金融機関ドロップダウン
     financial_options = ["", "ジャックス", "オリックス", "住信SBI銀行", "楽天銀行", "SBJ銀行"]
     current_financial = ""
     if k_data and "金融機関" in k_data and k_data["金融機関"].get("value"):
@@ -168,7 +211,6 @@ with st.sidebar:
     y_vu = st.number_input("利回り_価格設定(%)", value=get_val("利回り_価格設定"), step=0.1, disabled=is_fixed)
     l_year = st.number_input("ローン年数(年)", value=int(get_val("ローン年数", default=26)), step=1, disabled=is_fixed)
     
-    # ★ 変更箇所：金利の default を 2.05 に変更し、step を 0.01 に調整
     l_rate = st.number_input("金利(%)", value=get_val("金利", default=2.05), step=0.01, disabled=is_fixed)
 
 # --- 6. メイン表示エリア ---
@@ -185,12 +227,10 @@ if input_id and k_data:
     r_mai = rent_cols[2].number_input("マイソク(万)", value=get_val("マイソク賃料", divide=10000), step=0.1, disabled=is_fixed)
     r_ram = rent_cols[3].number_input("RAM募集(万)", value=get_val("RAM募集賃料", divide=10000), step=0.1, disabled=is_fixed)
 
-    # 【追加】銀行回答の表示 (粗利分析の上)
     bank_reply = k_data.get("銀行回答", {}).get("value", "")
-    # キントーンのフィールド内の改行文字を削除またはスペースに置換する場合はここで処理
     if bank_reply:
         bank_reply = bank_reply.replace('\n', ' ')
-        st.markdown(f'<div style="margin-top: 1.5rem; padding: 15px; background-color: #f1f5f9; border-radius: 8px; color: #334155; font-size: 0.95rem; line-height: 1.5;"><strong>[銀行評価]</strong>　 {bank_reply}</div>', unsafe_allow_html=True)
+        st.markdown(f'<div style="margin-top: 1.5rem; padding: 15px; background-color: #f1f5f9; border-radius: 8px; color: #334155; font-size: 0.95rem; line-height: 1.5;"><strong>[銀行評価]</strong> {bank_reply}</div>', unsafe_allow_html=True)
     
     with header_placeholder.container():
         st.write("") 
@@ -203,7 +243,7 @@ if input_id and k_data:
             else:
                 if st.button("🚀 条件を確定して保存", type="primary", use_container_width=True, key="active_btn"):
                     payload = {
-                        "金融機関": {"value": selected_financial}, # ★ 追加：金融機関の書き戻し
+                        "金融機関": {"value": selected_financial},
                         "仕入れ許容賃料": {"value": r_base * 10000},
                         "VU評価賃料": {"value": r_vu * 10000},
                         "マイソク賃料": {"value": r_mai * 10000},
@@ -219,7 +259,7 @@ if input_id and k_data:
                     }
                     if update_kintone_record(k_data["$id"]["value"], payload):
                         # kintone保存直後に、Pythonから直接Slack（スレッドのみ）へ送信
-                        send_slack_thread_direct(k_data, r_base, r_vu, r_mai, r_ram)
+                        send_slack_thread_direct(k_data, selected_financial, y_base, y_vu, r_base, r_vu, r_mai, r_ram, c_cost, p_other)
                         
                         import time
                         st.success("保存完了！")
@@ -233,7 +273,6 @@ if input_id and k_data:
     p_base = math.floor((((r_base - (mng_total/10000))*12)/(y_base/100))/10)*10 if y_base else 0
     p_vu = math.floor((((r_vu - (mng_total/10000))*12)/(y_vu/100))/10)*10 if y_vu else 0
     
-    # ★変更：仕入粗利計算（p_other を差し引く）
     prof_a = p_base - p_price - p_other - (r_base * 3)
     rate_a = (prof_a / p_base * 100) if p_base else 0
     
