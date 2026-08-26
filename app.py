@@ -276,7 +276,11 @@ if input_id and k_data:
     prof_a = p_base - p_price - p_other - (r_base * 3)
     rate_a = (prof_a / p_base * 100) if p_base else 0
     
-    prof_b = p_vu - p_base - c_cost
+    # 追加: 空室手当負担の計算
+    vacancy_allowance = (r_mai * 4) - (r_base * 3)
+    
+    # 変更: 工事費に加えて空室手当負担をマイナス
+    prof_b = p_vu - p_base - c_cost - vacancy_allowance
     total_p = prof_a + prof_b
     total_r = (total_p / p_vu * 100) if p_vu else 0
 
@@ -284,7 +288,7 @@ if input_id and k_data:
     st.markdown('<div class="section-title notranslate">粗利分析</div>', unsafe_allow_html=True)
     s1, s2, s3 = st.columns(3)
     with s1: st.markdown(f'<div class="metric-card"><div class="metric-label">仕入粗利</div><div class="metric-value">{prof_a:.1f}万</div><div style="color:#64748b; font-weight:600;">{rate_a:.2f}%</div></div>', unsafe_allow_html=True)
-    with s2: st.markdown(f'<div class="metric-card"><div class="metric-label">VU粗利</div><div class="metric-value">{prof_b:.1f}万</div><div style="font-size:0.75rem;">工事費 {int(c_cost)}万</div></div>', unsafe_allow_html=True)
+    with s2: st.markdown(f'<div class="metric-card"><div class="metric-label">VU粗利</div><div class="metric-value">{prof_b:.1f}万</div><div style="font-size:0.75rem;">工事費 {int(c_cost)}万</div><div style="font-size:0.75rem;">空室補填 {vacancy_allowance:.1f}万</div></div>', unsafe_allow_html=True)
     with s3: st.markdown(f'<div class="metric-card total-profit-card"><div class="metric-label">会社総粗利</div><div class="metric-value">{total_p:.1f}万</div><div class="rate-text" style="font-weight:600; color:#3b82f6;">{total_r:.2f}%</div></div>', unsafe_allow_html=True)
 
     # --- 9. 販売・CF詳細 ---
