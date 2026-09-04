@@ -117,8 +117,8 @@ def send_slack_thread_direct(k_data, sel_fin, val_y_base, val_y_vu, val_base, va
         
         text = f"""<@{'UMNGA526S'}> 条件が確定しました。
 ・金融機関：{sel_fin}
-・仕入時利回り：{val_y_base:.1f}%
-・価格設定利回り：{val_y_vu:.1f}%
+・仕入時利回り：{val_y_base:.2f}%
+・価格設定利回り：{val_y_vu:.2f}%
 
 ・仕入賃料：{val_base:.1f}万
 ・VU評価   ：{val_vu:.1f}万
