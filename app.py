@@ -211,7 +211,7 @@ with st.sidebar:
     y_vu = st.number_input("利回り_価格設定(%)", value=get_val("利回り_価格設定"), step=0.1, disabled=is_fixed)
     l_year = st.number_input("ローン年数(年)", value=int(get_val("ローン年数", default=26)), step=1, disabled=is_fixed)
     
-    l_rate = st.number_input("金利(%)", value=get_val("金利", default=2.05), step=0.01, disabled=is_fixed)
+    l_rate = st.number_input("金利(%)", value=get_val("金利", default=2.50), step=0.01, disabled=is_fixed)
 
 # --- 6. メイン表示エリア ---
 st.markdown('<div class="main-header-title notranslate">Value up 収支シミュレーション</div>', unsafe_allow_html=True)
