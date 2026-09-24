@@ -4,6 +4,15 @@ import requests
 import math
 import unicodedata
 
+# --- 0. 銀行別デフォルト金利マスタ設定 ---
+DEFAULT_BANK_RATES = {
+    "ジャックス": 2.40,
+    "オリックス": 2.05,
+    "住信SBI銀行": 1.99,
+    "楽天銀行": 2.34,
+    "SBJ銀行": 2.05,
+}
+
 # --- 1. ページ基本設定 ---
 st.set_page_config(page_title="Value up 収支", layout="wide", initial_sidebar_state="expanded")
 
@@ -59,7 +68,6 @@ def update_kintone_record(record_id, payload):
 
 # Streamlitから直接Slackのスレッドに通知する関数
 def send_slack_thread_direct(k_data, sel_fin, val_y_base, val_y_vu, val_base, val_vu, val_mai, val_ram, val_cost, val_other):
-    # kintoneのデータからスレッドID（slack_ts_a）を取得
     thread_ts = ""
     if k_data and "slack_ts_a" in k_data and k_data["slack_ts_a"]["value"]:
         thread_ts = k_data["slack_ts_a"]["value"]
@@ -68,7 +76,6 @@ def send_slack_thread_direct(k_data, sel_fin, val_y_base, val_y_vu, val_base, va
         print("スレッドIDが見つからないため、通知をスキップしました。")
         return False
 
-    # kintoneの元データを安全に数値化・取得するヘルパー関数
     def parse_k_val(field, default=0.0, divide=1):
         if k_data and field in k_data:
             v = k_data[field].get("value")
@@ -77,7 +84,6 @@ def send_slack_thread_direct(k_data, sel_fin, val_y_base, val_y_vu, val_base, va
             except: return default
         return default
 
-    # 変更差分の検出ロジック
     changed_fields = []
 
     old_fin = k_data.get("金融機関", {}).get("value", "") if k_data else ""
@@ -108,7 +114,6 @@ def send_slack_thread_direct(k_data, sel_fin, val_y_base, val_y_vu, val_base, va
     if round(parse_k_val("RAM募集賃料", divide=10000), 1) != round(val_ram, 1):
         changed_fields.append("RAM募集賃料")
 
-    # 変更があった場合のみ末尾に注記を追加
     change_note = f"\n\n※{'・'.join(changed_fields)}が変更されました。" if changed_fields else ""
         
     try:
@@ -174,6 +179,13 @@ st.markdown("""
 with st.sidebar:
     st.markdown('<div class="notranslate" style="font-weight:bold; font-size:1.1rem;">物件検索</div>', unsafe_allow_html=True)
     input_id = st.text_input("物件ID (TS_ID)", value=st.query_params.get("ts_id", ""))
+    
+    # 検索対象IDが変わった場合はセッションの金融機関選択状態を初期化
+    if "prev_input_id" not in st.session_state or st.session_state.prev_input_id != input_id:
+        st.session_state.prev_input_id = input_id
+        if "selected_bank" in st.session_state:
+            del st.session_state["selected_bank"]
+
     k_data = fetch_kintone_data(input_id) if input_id else None
 
     is_fixed = False
@@ -183,35 +195,55 @@ with st.sidebar:
     def get_val(field, default=0.0, divide=1):
         if k_data and field in k_data:
             val = k_data[field].get("value")
-            if not val: return default
-            try: return float(str(val).replace(',', '').strip()) / divide
-            except: return default
+            if val is not None and val != "":
+                try: return float(str(val).replace(',', '').strip()) / divide
+                except: return default
         return default
 
     st.divider()
     lock_label = " (🔒 確定済)" if is_fixed else ""
     st.markdown(f'<div class="notranslate" style="font-weight:bold; font-size:1.1rem;">基本データ{lock_label}</div>', unsafe_allow_html=True)
     p_price = st.number_input("仕入価格(万)", value=int(get_val("仕入価格")), step=10, disabled=is_fixed)
-    
     p_other = st.number_input("仕入費用_その他(万)", value=get_val("仕入れ費用_その他", divide=10000), step=0.1, format="%.1f", disabled=is_fixed)
-    
     m_fee = st.number_input("管理費(円)", value=int(get_val("管理費")), step=100, disabled=is_fixed)
     r_fee = st.number_input("修繕積立金(円)", value=int(get_val("修繕積立金")), step=100, disabled=is_fixed)
     c_cost = st.number_input("工事費想定(万)", value=int(get_val("工事費想定")), step=10, disabled=is_fixed)
     st.divider()
-    
+
+    # --- 金融機関と金利の連動処理 ---
     financial_options = ["", "ジャックス", "オリックス", "住信SBI銀行", "楽天銀行", "SBJ銀行"]
-    current_financial = ""
-    if k_data and "金融機関" in k_data and k_data["金融機関"].get("value"):
-        current_financial = k_data["金融機関"]["value"]
-    fin_index = financial_options.index(current_financial) if current_financial in financial_options else 0
-    selected_financial = st.selectbox("金融機関", options=financial_options, index=fin_index, disabled=is_fixed)
+    
+    if "selected_bank" not in st.session_state:
+        current_financial = k_data.get("金融機関", {}).get("value", "") if (k_data and "金融機関" in k_data) else ""
+        st.session_state.selected_bank = current_financial if current_financial in financial_options else ""
+
+    def on_bank_change():
+        selected = st.session_state.selected_bank
+        if selected in DEFAULT_BANK_RATES:
+            st.session_state.current_rate = DEFAULT_BANK_RATES[selected]
+
+    fin_index = financial_options.index(st.session_state.selected_bank) if st.session_state.selected_bank in financial_options else 0
+    selected_financial = st.selectbox("金融機関", options=financial_options, index=fin_index, disabled=is_fixed, key="selected_bank", on_change=on_bank_change)
+
+    # 金利の初期値決定（kintoneの「試算金利」 > 旧「金利」 > マスタ値 > デフォルト2.50）
+    if "current_rate" not in st.session_state or is_fixed:
+        saved_rate = get_val("試算金利", default=None)
+        if saved_rate is None or saved_rate == 0:
+            saved_rate = get_val("金利", default=None)
+
+        if saved_rate is not None and saved_rate > 0:
+            st.session_state.current_rate = saved_rate
+        elif selected_financial in DEFAULT_BANK_RATES:
+            st.session_state.current_rate = DEFAULT_BANK_RATES[selected_financial]
+        else:
+            st.session_state.current_rate = 2.50
 
     y_base = st.number_input("利回り_仕入時(%)", value=get_val("利回り_仕入時"), step=0.1, disabled=is_fixed)
     y_vu = st.number_input("利回り_価格設定(%)", value=get_val("利回り_価格設定"), step=0.1, disabled=is_fixed)
     l_year = st.number_input("ローン年数(年)", value=int(get_val("ローン年数", default=26)), step=1, disabled=is_fixed)
     
-    l_rate = st.number_input("金利(%)", value=get_val("金利", default=2.50), step=0.01, disabled=is_fixed)
+    l_rate = st.number_input("金利(%)", value=st.session_state.current_rate, step=0.01, disabled=is_fixed, key="rate_input")
+    st.session_state.current_rate = l_rate
 
 # --- 6. メイン表示エリア ---
 st.markdown('<div class="main-header-title notranslate">Value up 収支シミュレーション</div>', unsafe_allow_html=True)
@@ -252,18 +284,18 @@ if input_id and k_data:
                         "利回り_仕入時": {"value": y_base},
                         "利回り_価格設定": {"value": y_vu},
                         "ローン年数": {"value": l_year},
+                        "試算金利": {"value": l_rate},
                         "金利": {"value": l_rate},
                         "仕入れ費用_その他": {"value": int(p_other * 10000)},
                         "条件確定": {"value": ["確認済"]},
                         "VU可否": {"value": "パス準備"}
                     }
                     if update_kintone_record(k_data["$id"]["value"], payload):
-                        # kintone保存直後に、Pythonから直接Slack（スレッドのみ）へ送信
                         send_slack_thread_direct(k_data, selected_financial, y_base, y_vu, r_base, r_vu, r_mai, r_ram, c_cost, p_other)
                         
                         import time
                         st.success("保存完了！")
-                        time.sleep(1) # メッセージを1秒だけ表示してリロード
+                        time.sleep(1)
                         st.rerun()
                     else:
                         st.error("保存失敗。")
@@ -276,10 +308,8 @@ if input_id and k_data:
     prof_a = p_base - p_price - p_other - (r_base * 3)
     rate_a = (prof_a / p_base * 100) if p_base else 0
     
-    # 追加: 空室手当負担の計算
     vacancy_allowance = (r_mai * 4) - (r_base * 3)
     
-    # 変更: 工事費に加えて空室手当負担をマイナス
     prof_b = p_vu - p_base - c_cost - vacancy_allowance
     total_p = prof_a + prof_b
     total_r = (total_p / p_vu * 100) if p_vu else 0
