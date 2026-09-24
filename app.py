@@ -180,11 +180,11 @@ with st.sidebar:
     st.markdown('<div class="notranslate" style="font-weight:bold; font-size:1.1rem;">物件検索</div>', unsafe_allow_html=True)
     input_id = st.text_input("物件ID (TS_ID)", value=st.query_params.get("ts_id", ""))
     
-    # 検索対象IDが変わった場合はセッションの金融機関選択状態を初期化
+    # 物件検索が変わった際のセッション初期化処理
     if "prev_input_id" not in st.session_state or st.session_state.prev_input_id != input_id:
         st.session_state.prev_input_id = input_id
-        if "selected_bank" in st.session_state:
-            del st.session_state["selected_bank"]
+        if "selected_bank" in st.session_state: del st.session_state["selected_bank"]
+        if "rate_input" in st.session_state: del st.session_state["rate_input"]
 
     k_data = fetch_kintone_data(input_id) if input_id else None
 
@@ -217,33 +217,33 @@ with st.sidebar:
         current_financial = k_data.get("金融機関", {}).get("value", "") if (k_data and "金融機関" in k_data) else ""
         st.session_state.selected_bank = current_financial if current_financial in financial_options else ""
 
+    # プルダウン変更時に number_input の state を直接書き換える関数
     def on_bank_change():
         selected = st.session_state.selected_bank
         if selected in DEFAULT_BANK_RATES:
-            st.session_state.current_rate = DEFAULT_BANK_RATES[selected]
+            st.session_state.rate_input = DEFAULT_BANK_RATES[selected]
 
     fin_index = financial_options.index(st.session_state.selected_bank) if st.session_state.selected_bank in financial_options else 0
     selected_financial = st.selectbox("金融機関", options=financial_options, index=fin_index, disabled=is_fixed, key="selected_bank", on_change=on_bank_change)
 
-    # 金利の初期値決定（kintoneの「試算金利」 > 旧「金利」 > マスタ値 > デフォルト2.50）
-    if "current_rate" not in st.session_state or is_fixed:
+    # 金利フィールドの初期設定（初回ロード時）
+    if "rate_input" not in st.session_state or is_fixed:
         saved_rate = get_val("試算金利", default=None)
         if saved_rate is None or saved_rate == 0:
             saved_rate = get_val("金利", default=None)
 
         if saved_rate is not None and saved_rate > 0:
-            st.session_state.current_rate = saved_rate
+            st.session_state.rate_input = saved_rate
         elif selected_financial in DEFAULT_BANK_RATES:
-            st.session_state.current_rate = DEFAULT_BANK_RATES[selected_financial]
+            st.session_state.rate_input = DEFAULT_BANK_RATES[selected_financial]
         else:
-            st.session_state.current_rate = 2.50
+            st.session_state.rate_input = 2.50
 
     y_base = st.number_input("利回り_仕入時(%)", value=get_val("利回り_仕入時"), step=0.1, disabled=is_fixed)
     y_vu = st.number_input("利回り_価格設定(%)", value=get_val("利回り_価格設定"), step=0.1, disabled=is_fixed)
     l_year = st.number_input("ローン年数(年)", value=int(get_val("ローン年数", default=26)), step=1, disabled=is_fixed)
     
-    l_rate = st.number_input("金利(%)", value=st.session_state.current_rate, step=0.01, disabled=is_fixed, key="rate_input")
-    st.session_state.current_rate = l_rate
+    l_rate = st.number_input("金利(%)", step=0.01, disabled=is_fixed, key="rate_input")
 
 # --- 6. メイン表示エリア ---
 st.markdown('<div class="main-header-title notranslate">Value up 収支シミュレーション</div>', unsafe_allow_html=True)
